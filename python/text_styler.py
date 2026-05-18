@@ -28,11 +28,8 @@ class TextStylerRegexConfig:
 def html_tag(
     tag: str, attributes: dict[str, str] | None = None
 ) -> Callable[[str], str]:
-    attributes_str = ""
-    if attributes:
-        attributes_strs = [f"{key}='{val}'" for key, val in attributes.items()]
-        attributes_str = " " + " ".join(attributes_strs)
-    return lambda text: f"<{tag}{attributes_str}>" + text + f"</{tag}>"
+    attrs = "".join(f" {k}='{v}'" for k, v in attributes.items()) if attributes else ""
+    return lambda text: f"<{tag}{attrs}>{text}</{tag}>"
 
 
 @dataclass
@@ -193,15 +190,6 @@ class TextStyler:
         paths = sorted(paths, key=lambda t: t.count("<"))
         return paths[0]
 
-    def _split_by_line_preserving_newlines(self, text: str) -> list[str]:
-        lines = text.split("\n")
-        for i in range(0, len(lines) - 1):
-            lines[i] += "\n"
-
-        if len(lines[-1]) == 0:
-            lines = lines[0 : len(lines) - 1]
-        return lines
-
     def process_text(self, text: str, multiline: bool = False):
         self.recursive_calls = 0
         self.min_skips = None
@@ -209,8 +197,8 @@ class TextStyler:
         if multiline:
             return self._process_text(text)
 
-        texts = self._split_by_line_preserving_newlines(text)
-        texts = list(map(self._process_text, texts))
+        texts = re.findall(r".*?\n|.+", text)
+        texts = map(self._process_text, texts)
         text = "".join(texts)
         return text
 
