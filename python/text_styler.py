@@ -165,31 +165,30 @@ class TextStyler:
         start: int,
         path: Path,
         stack: list[TextStylerConfig],
-        skips: int = 0,
-    ) -> list[tuple[Path, int]]:
+    ) -> list[Path]:
         self.recursive_calls += 1
 
-        if self.min_skips is not None and skips > self.min_skips:
+        if self.min_skips is not None and path.num_skips > self.min_skips:
             return []
 
         if text == "":
-            return [(Path(), skips)]
+            return [Path()]
 
         nexts = self._find_next(text, start)
 
         if start >= len(text) or len(nexts) == 0:
             if len(stack) == 0:
-                self.min_skips = (
-                    min(self.min_skips, skips) if self.min_skips is not None else skips
-                )
-                return [(path.copy_and_push(TextAction(text[start:])), skips)]
+                if self.min_skips is None:
+                    self.min_skips = path.num_skips
+                self.min_skips = min(self.min_skips, path.num_skips)
+                return [path.copy_and_push(TextAction(text[start:]))]
             else:
                 return []
 
         nexts = sorted(nexts, key=lambda i: i[1])
-        paths: list[tuple[Path, int]] = []
+        paths: list[Path] = []
         last_index: int | None = None
-        current_skips = skips
+        current_skips = path.num_skips
 
         for config, index, is_start, is_end, match in nexts:
             if last_index is not None and index > last_index:
@@ -229,18 +228,14 @@ class TextStyler:
             if not new_path:
                 raise ValueError("Shouldn't reach here")
 
-            paths.extend(
-                self._helper(text, new_start, new_path, new_stack, current_skips)
-            )
+            paths.extend(self._helper(text, new_start, new_path, new_stack))
 
         # Fallback branch: skip the current set of tokens entirely
         most_index = nexts[-1][1] + 1
         current_skips += 1
         new_path = path.copy_and_push(TextAction(text[start:most_index]))
         new_path.num_skips = current_skips
-        paths.extend(
-            self._helper(text, most_index, new_path, stack.copy(), current_skips)
-        )
+        paths.extend(self._helper(text, most_index, new_path, stack.copy()))
 
         return paths
 
@@ -249,31 +244,26 @@ class TextStyler:
             return text
         text = html.escape(text, quote=False)
         paths = self._helper(text, 0, Path(), [])
-        print("HELLO")
-        print(paths)
+
         # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
-        least_skips = min(map(lambda path: path[0].num_skips, paths))
-        winning_paths = [path[0] for path in paths if path[1] == least_skips]
-        # Tie-break to the fewest blocks
-        realized_trees: list[SyntaxTree] = []
-        for path in winning_paths:
-            ast = SyntaxTree()
-            for action in path.actions:
-                if isinstance(action, TextAction):
-                    ast.push_str(action.text)
-                elif isinstance(action, PushAction):
-                    ast.push(action.config)
-                elif isinstance(action, PopAction):
-                    ast.pop()
-                else:
-                    ast.push_regex(action.config, action.match)
-            realized_trees.append(ast)
+        # Then tie-break to the fewest blocks created
+        least_skips = min(map(lambda path: path.num_skips, paths))
+        winning_paths = [path for path in paths if path.num_skips == least_skips]
+        winner = sorted(winning_paths, key=lambda p: p.num_pushes)[0]
 
-        realized_trees = sorted(realized_trees, key=lambda tree: str(tree).count("<"))
-        winning_tree = realized_trees[0]
+        # Build the tree
+        ast = SyntaxTree()
+        for action in winner.actions:
+            if isinstance(action, TextAction):
+                ast.push_str(action.text)
+            elif isinstance(action, PushAction):
+                ast.push(action.config)
+            elif isinstance(action, PopAction):
+                ast.pop()
+            else:
+                ast.push_regex(action.config, action.match)
 
-        # Returns the finalized evaluated string
-        return str(winning_tree)
+        return str(ast)
 
     def process_text(self, text: str, multiline: bool = False):
         self.recursive_calls = 0
