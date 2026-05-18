@@ -151,31 +151,28 @@ class TextStyler:
 
             new_ast = ast.copy()
             new_ast.push_str(text[start:index])
+            new_start = index
             if isinstance(config, TextStylerRegexConfig):
                 if not match:
                     raise ValueError("Match is missing from a regex")
-                new_start = index + len(match.group(0))
+                new_start += len(match.group(0))
                 new_ast.push_regex(config, match)
-                paths.extend(self._helper(text, new_start, new_ast, skips))
             else:
                 if new_ast.at_top_of_stack():
                     if is_start:
                         new_ast.push(config)
-                        new_start = index + len(config.get_start())
-                        paths.extend(self._helper(text, new_start, new_ast, skips))
+                        new_start += len(config.get_start())
                     else:
-                        new_start = index + len(config.get_end())
-                        paths.extend(self._helper(text, new_start, new_ast, skips + 1))
+                        new_start += len(config.get_end())
                 else:
                     if is_end and new_ast.peek() == config:
                         new_ast.pop()
-                        new_start = index + len(config.get_end())
-                        paths.extend(self._helper(text, new_start, new_ast, skips))
+                        new_start += len(config.get_end())
                     elif is_start:
                         new_ast.push(config)
-                        new_start = index + len(config.get_start())
-                        paths.extend(self._helper(text, new_start, new_ast, skips))
+                        new_start += len(config.get_start())
                 last_index = index
+            paths.extend(self._helper(text, new_start, new_ast, skips))
 
         most_index = nexts[-1][1] + 1
         new_ast = ast.copy()
