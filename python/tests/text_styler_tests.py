@@ -1,0 +1,629 @@
+import re
+
+from text_styler import (
+    ConsumptionStyle,
+    InnerStyle,
+    TextStyler,
+    TextStylerConfig,
+    TextStylerRegexConfig,
+    html_tag,
+)
+
+
+def test_styletext_none():
+    text_styler = TextStyler()
+    assert text_styler.process_text("this is normal") == "this is normal"
+    print(text_styler.recursive_calls)
+
+
+def test_all_is_bold():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert text_styler.process_text("*this is bold*") == "<strong>this is bold</strong>"
+    print(text_styler.recursive_calls)
+
+
+def test_all_is_italics():
+    text_styler = TextStyler([TextStylerConfig(start="_", transform=html_tag("em"))])
+    assert text_styler.process_text("_this is italics_") == "<em>this is italics</em>"
+    print(text_styler.recursive_calls)
+
+
+def test_some_is_bold():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text("this *is bold* in the middle")
+        == "this <strong>is bold</strong> in the middle"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_beginning_is_bold():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text("*this is bold* at the start")
+        == "<strong>this is bold</strong> at the start"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_ending_is_bold():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text("this is *bold at the end*")
+        == "this is <strong>bold at the end</strong>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_italics_within_bold():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+        ]
+    )
+    assert (
+        text_styler.process_text("this *is _bold and italics_ which* is pretty cool")
+        == "this <strong>is <em>bold and italics</em> which</strong> is pretty cool"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_bold_without_end():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text("*this is bold that doesn't end")
+        == "*this is bold that doesn't end"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_bold_at_end():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text("this is bold that doesn't start*")
+        == "this is bold that doesn't start*"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_italics_within_bold_within_italics():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "_this is *bold and then _italics again_ and* it still_ works"
+        )
+        == "<em>this is <strong>bold and then <em>italics again</em> and</strong> it still</em> works"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_two_bolds_not_overlapping():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text(
+            "*this is *bold and then bold again* but it still works*"
+        )
+        == "<strong>this is </strong>bold and then bold again<strong> but it still works</strong>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_three_asterisks():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text(
+            "*this is bold and then bold again* but doesn't close the second* bold"
+        )
+        == "<strong>this is bold and then bold again</strong> but doesn't close the second* bold"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_single_underscore_in_middle_of_bold():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "this is *bold with an underscore_ in the middle* that doesn't end"
+        )
+        == "this is <strong>bold with an underscore_ in the middle</strong> that doesn't end"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_overlapping_regions1():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "this is *bold and now _an underscore* that closes later_"
+        )
+        == "this is <strong>bold and now _an underscore</strong> that closes later_"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_overlapping_regions2():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "this is _bold and now *an underscore_ that closes later*"
+        )
+        == "this is <em>bold and now *an underscore</em> that closes later*"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_strikethrough():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+        ]
+    )
+    assert (
+        text_styler.process_text("this is ~~bad~~ *great*!")
+        == "this is <del>bad</del> <strong>great</strong>!"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_strikethrough_and_sub():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+        ]
+    )
+    assert (
+        text_styler.process_text("this is ~~bad~~ ~okay~")
+        == "this is <del>bad</del> <sub>okay</sub>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_strikethrough_within_sub():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+        ]
+    )
+    assert (
+        text_styler.process_text("Water is H~ ~~3~~2~O")
+        == "Water is H<sub> <del>3</del>2</sub>O"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_sub_within_strikethrough():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+        ]
+    )
+    assert (
+        text_styler.process_text("Water is ~~H~3~O~~ H~2~O")
+        == "Water is <del>H<sub>3</sub>O</del> H<sub>2</sub>O"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_triple_tilde_strikethrough_within_sub():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+        ]
+    )
+    assert (
+        text_styler.process_text("Water is H~~~3~~2~O")
+        == "Water is H<sub><del>3</del>2</sub>O"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_triple_tilde_overall_sub_within_strikethrough():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+        ]
+    )
+    assert (
+        text_styler.process_text("Small text: ~~~foo~bar~~")
+        == "Small text: <del><sub>foo</sub>bar</del>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_different_start_and_end():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text("<!this is a spoiler!>")
+        == "<span class='spoiler'>this is a spoiler</span>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_different_start_and_end_with_styling():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
+            ),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+        ]
+    )
+    assert (
+        text_styler.process_text("<!this _is_ a ~~_quote_~~ *spoiler*!>")
+        == "<span class='spoiler'>this <em>is</em> a <del><em>quote</em></del> <strong>spoiler</strong></span>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_start_and_end_inside_start_and_end():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "<!this is a spoiler <!within a spoiler!>, which is weird!>"
+        )
+        == "<span class='spoiler'>this is a spoiler <span class='spoiler'>within a spoiler</span>, which is weird</span>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_start_and_end_inside_start_and_end_disallow_direct():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerConfig(
+                start="<!",
+                transform=html_tag("span", {"class": "spoiler"}),
+                end="!>",
+                allow_inner=InnerStyle.DISALLOW_DIRECT,
+            ),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "<!this is a spoiler <!within a spoiler!>, which is _weird, but this is <!allowed!>_!>"
+        )
+        == "<span class='spoiler'>this is a spoiler &lt;!within a spoiler!&gt;, which is <em>weird, but this is <span class='spoiler'>allowed</span></em></span>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_start_and_end_inside_start_and_end_disallow_ancestors():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerConfig(
+                start="<!",
+                transform=html_tag("span", {"class": "spoiler"}),
+                end="!>",
+                allow_inner=InnerStyle.DISALLOW_ANCESTOR,
+            ),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "<!this is a spoiler <!within a spoiler!>, which is _weird, and so is <!this!>_!>"
+        )
+        == "<span class='spoiler'>this is a spoiler &lt;!within a spoiler!&gt;, which is <em>weird, and so is &lt;!this!&gt;</em></span>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_multiquote():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start=">",
+                transform=html_tag("blockquote"),
+                end="\n",
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            ">this is a blockquote\n>this is *another\n>this is* a cool third one\n",
+        )
+        == "<blockquote>this is a blockquote</blockquote><blockquote>this is *another</blockquote><blockquote>this is* a cool third one</blockquote>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_multiquote_preserving_start_marking():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start=">",
+                transform=html_tag("blockquote"),
+                end="\n",
+                consume_start=ConsumptionStyle.OUTSIDE,
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            ">this is a blockquote\n>this is *another\n>this is* a cool third one\n",
+        )
+        == "<blockquote>&gt;this is a blockquote</blockquote><blockquote>&gt;this is *another</blockquote><blockquote>&gt;this is* a cool third one</blockquote>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_multiquote_preserving_all():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start=">",
+                transform=html_tag("blockquote"),
+                end="\n",
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            ">this is a blockquote\n>this is *another\n>this is* a cool third one\n",
+        )
+        == "<blockquote>&gt;this is a blockquote\n</blockquote><blockquote>&gt;this is *another\n</blockquote><blockquote>&gt;this is* a cool third one\n</blockquote>"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_keep_all_markings_outside():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="*",
+                transform=html_tag("strong"),
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            ),
+            TextStylerConfig(
+                start="_",
+                transform=html_tag("em"),
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            ),
+            TextStylerConfig(
+                start="~~",
+                transform=html_tag("del"),
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            ),
+            TextStylerConfig(
+                start="~",
+                transform=html_tag("sub"),
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            ),
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "Lorem *ipsum* dolor sit ~amet~, _consectetur ~~adipiscing~~ *elit*_. Nulla _dapibus_.",
+        )
+        == "Lorem <strong>*ipsum*</strong> dolor sit <sub>~amet~</sub>, <em>_consectetur <del>~~adipiscing~~</del> <strong>*elit*</strong>_</em>. Nulla <em>_dapibus_</em>."
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_keep_all_markings_inside():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="*",
+                transform=html_tag("strong"),
+                consume_start=ConsumptionStyle.INSIDE,
+                consume_end=ConsumptionStyle.INSIDE,
+            ),
+            TextStylerConfig(
+                start="_",
+                transform=html_tag("em"),
+                consume_start=ConsumptionStyle.INSIDE,
+                consume_end=ConsumptionStyle.INSIDE,
+            ),
+            TextStylerConfig(
+                start="~~",
+                transform=html_tag("del"),
+                consume_start=ConsumptionStyle.INSIDE,
+                consume_end=ConsumptionStyle.INSIDE,
+            ),
+            TextStylerConfig(
+                start="~",
+                transform=html_tag("sub"),
+                consume_start=ConsumptionStyle.INSIDE,
+                consume_end=ConsumptionStyle.INSIDE,
+            ),
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "Lorem *ipsum* dolor sit ~amet~, _consectetur ~~adipiscing~~ *elit*_. Nulla _dapibus_.",
+        )
+        == "Lorem *<strong>ipsum</strong>* dolor sit ~<sub>amet</sub>~, _<em>consectetur ~~<del>adipiscing</del>~~ *<strong>elit</strong>*</em>_. Nulla _<em>dapibus</em>_."
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_regex():
+    text_styler = TextStyler(
+        [
+            TextStylerRegexConfig(
+                regex=re.compile(r"&gt;&gt;(\d+)"),
+                replace=r"<link id='\1'>\g<0></link>",
+            )
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "This is an imageboard style >>12345 link",
+        )
+        == "This is an imageboard style <link id='12345'>&gt;&gt;12345</link> link"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_regex_wrapped_with_strong():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerRegexConfig(
+                regex=re.compile(r"&gt;&gt;(\d+)"),
+                replace=r"<link id='\1'>\g<0></link>",
+            ),
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "This is an imageboard *style >>12345 link* that is bolded",
+        )
+        == "This is an imageboard <strong>style <link id='12345'>&gt;&gt;12345</link> link</strong> that is bolded"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_regex_wrapped_with_strong_inside_it1():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerRegexConfig(
+                regex=re.compile(r"&gt;&gt;([*\d]+)"),
+                replace=r"<link id='\1'>\g<0></link>",
+            ),
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "This is a regex unaffected >>12*3*45 by *asterisks* inside it",
+        )
+        == "This is a regex unaffected <link id='12*3*45'>&gt;&gt;12*3*45</link> by <strong>asterisks</strong> inside it"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_regex_wrapped_with_strong_inside_it2():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerRegexConfig(
+                regex=re.compile(r"&gt;&gt;([*\d]+)"),
+                replace=r"<link id='\1'>\g<0></link>",
+            ),
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "This is a regex *broken by an asterisk >>12*345 that came first",
+        )
+        == "This is a regex <strong>broken by an asterisk &gt;&gt;12</strong>345 that came first"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_regex_wrapped_with_strong_inside_it3():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerRegexConfig(
+                regex=re.compile(r"&gt;&gt;([*\d]+)"),
+                replace=r"<link id='\1'>\g<0></link>",
+            ),
+        ]
+    )
+
+    assert (
+        text_styler.process_text(
+            "This is a regex unbroken by an asterisk >>12*345 that came* second",
+        )
+        == "This is a regex unbroken by an asterisk <link id='12*345'>&gt;&gt;12*345</link> that came* second"
+    )
+    print(text_styler.recursive_calls)
+
+
+def test_regex_within_regex():
+    text_styler = TextStyler(
+        [
+            TextStylerRegexConfig(  # imageboard style implied board link
+                regex=re.compile(r"/anime/"),
+                replace=r"<link to='/anime'>/anime/</link>",
+            ),
+            TextStylerRegexConfig(  # external link
+                regex=re.compile(r"https://\w+\.\w+.com(/\w+)+"),
+                replace=r"<a href='\g<0>'>\g<0></a>",
+            ),
+        ]
+    )
+    assert (
+        text_styler.process_text("Make sure /anime/ works")
+        == "Make sure <link to='/anime'>/anime/</link> works"
+    )
+    assert (
+        text_styler.process_text(
+            "Here is a link https://www.google.com/anime/hello matching one regex within another"
+        )
+        == "Here is a link <a href='https://www.google.com/anime/hello'>https://www.google.com/anime/hello</a> matching one regex within another"
+    )
+
+    print(text_styler.recursive_calls)
