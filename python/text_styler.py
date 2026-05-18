@@ -135,7 +135,7 @@ class TextStyler:
 
         nexts = self._find_next(text, start)
         if start >= len(text) or len(nexts) == 0:
-            if len(ast) == 0:
+            if ast.at_top_of_stack():
                 self.min_skips = min(self.min_skips, skips) if self.min_skips else skips
                 ast.push_str(text[start:])
                 return [(str(ast), skips)]
@@ -158,7 +158,7 @@ class TextStyler:
                 new_ast.push_regex(config, match)
                 paths.extend(self._helper(text, new_start, new_ast, skips))
             else:
-                if len(new_ast) == 0:
+                if new_ast.at_top_of_stack():
                     if is_start:
                         new_ast.push(config)
                         new_start = index + len(config.get_start())
@@ -224,21 +224,11 @@ class SyntaxTree:
     def __init__(self):
         self.children: list[SyntaxTreeNode | str] = []
         self.curr: SyntaxTreeNode | None = None
-        self.stack: list[TextStylerConfig | TextStylerRegexConfig] = []
-
-    def _init_stack(self):
-        self.stack = []
-        current = self.curr
-        while current is not None:
-            self.stack.append(current.matched)
-            current = current.parent
-        self.stack.reverse()
 
     def push(self, matched: TextStylerConfig):
         new_node = SyntaxTreeNode(self.curr, matched)
         self._push(new_node)
         self.curr = new_node
-        self.stack.append(matched)
 
     def push_regex(self, matched: TextStylerRegexConfig, match: re.Match[str]):
         new_node = SyntaxTreeNode(self.curr, matched, match)
@@ -258,13 +248,11 @@ class SyntaxTree:
         if self.curr is None:
             raise ValueError("Attempted to pop() when already at root")
         self.curr = self.curr.parent
-        self.stack.pop()
 
-    def peek(self, depth: int = 1) -> TextStylerConfig | TextStylerRegexConfig | None:
-        return self.stack[-depth]
-
-    def current_path(self) -> list[TextStylerConfig | TextStylerRegexConfig]:
-        return self.stack
+    def peek(self) -> TextStylerConfig | None:
+        if self.curr is None or not isinstance(self.curr.matched, TextStylerConfig):
+            return None
+        return self.curr.matched
 
     def copy(self) -> SyntaxTree:
         ast = SyntaxTree()
@@ -279,11 +267,10 @@ class SyntaxTree:
                 children_copy.append(child_copy)
         ast.children = children_copy
         ast.curr = found
-        ast._init_stack()
         return ast
 
-    def __len__(self):
-        return len(self.stack)
+    def at_top_of_stack(self):
+        return self.curr is None
 
     @override
     def __str__(self) -> str:
