@@ -47,13 +47,13 @@ def test_simple_ast(em_config: TextStylerConfig):
     assert str(ast) == "hello <em>my</em> world"
 
     assert ast.curr is None
-    assert ast.root[0] == "hello "
-    assert ast.root[2] == " world"
-    assert isinstance(ast.root[1], SyntaxTreeNode)
-    assert ast.root[1].parent is None
-    assert ast.root[1].children == ["my"]
-    assert ast.root[1].matched == em_config
-    assert ast.root[1].match is None
+    assert ast.children[0] == "hello "
+    assert ast.children[2] == " world"
+    assert isinstance(ast.children[1], SyntaxTreeNode)
+    assert ast.children[1].parent is None
+    assert ast.children[1].children == ["my"]
+    assert ast.children[1].matched == em_config
+    assert ast.children[1].match is None
 
 
 def test_simple_ast_copy(em_config: TextStylerConfig):
@@ -66,13 +66,13 @@ def test_simple_ast_copy(em_config: TextStylerConfig):
 
     ast = ast.copy()
     assert ast.curr is None
-    assert ast.root[0] == "hello "
-    assert ast.root[2] == " world"
-    assert isinstance(ast.root[1], SyntaxTreeNode)
-    assert ast.root[1].parent is None
-    assert ast.root[1].children == ["my"]
-    assert ast.root[1].matched == em_config
-    assert ast.root[1].match is None
+    assert ast.children[0] == "hello "
+    assert ast.children[2] == " world"
+    assert isinstance(ast.children[1], SyntaxTreeNode)
+    assert ast.children[1].parent is None
+    assert ast.children[1].children == ["my"]
+    assert ast.children[1].matched == em_config
+    assert ast.children[1].match is None
 
 
 def test_simple_ast_copy_in_middle(em_config: TextStylerConfig):
@@ -89,13 +89,13 @@ def test_simple_ast_copy_in_middle(em_config: TextStylerConfig):
     ast.push_str(" world")
 
     assert ast.curr is None
-    assert ast.root[0] == "hello "
-    assert ast.root[2] == " world"
-    assert isinstance(ast.root[1], SyntaxTreeNode)
-    assert ast.root[1].parent is None
-    assert ast.root[1].children == ["my"]
-    assert ast.root[1].matched == em_config
-    assert ast.root[1].match is None
+    assert ast.children[0] == "hello "
+    assert ast.children[2] == " world"
+    assert isinstance(ast.children[1], SyntaxTreeNode)
+    assert ast.children[1].parent is None
+    assert ast.children[1].children == ["my"]
+    assert ast.children[1].matched == em_config
+    assert ast.children[1].match is None
 
 
 def test_simple_ast_peek(em_config: TextStylerConfig):

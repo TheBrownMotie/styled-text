@@ -45,28 +45,24 @@ class TextStylerConfig:
     consume_end: ConsumptionStyle = ConsumptionStyle.REPLACE
     allow_inner: InnerStyle = InnerStyle.ALLOW
 
-    def get_marking_end(self) -> str:
+    def get_end(self) -> str:
         return html.escape(self.end or self.start)
 
-    def get_marking_start(self) -> str:
+    def get_start(self) -> str:
         return html.escape(self.start)
 
-    def check_inner_skip(self, node: SyntaxTreeNode | None) -> bool:
-        if self.allow_inner == InnerStyle.ALLOW or node is None or node.parent is None:
-            return False
+    def get_wrappers(self) -> tuple[str, str, str, str]:
+        outer_prefix, inner_prefix, inner_suffix, outer_suffix = "", "", "", ""
+        if self.consume_start == ConsumptionStyle.INSIDE:
+            outer_prefix = self.get_end()
+        if self.consume_start == ConsumptionStyle.OUTSIDE:
+            inner_prefix = self.get_start()
 
-        if self.allow_inner == InnerStyle.DISALLOW_DIRECT:
-            return node.matched == self and node.parent.matched == self
-
-        if self.allow_inner == InnerStyle.DISALLOW_ANCESTOR:
-            curr = node.parent
-            while curr is not None:
-                if curr.matched == self:
-                    return True
-                curr = curr.parent
-            return False
-
-        raise ValueError(f"Unrecognized value: InnerStyle.{self.allow_inner}")
+        if self.consume_end == ConsumptionStyle.INSIDE:
+            outer_suffix = self.get_end()
+        if self.consume_end == ConsumptionStyle.OUTSIDE:
+            inner_suffix = self.get_end()
+        return (outer_prefix, inner_prefix, inner_suffix, outer_suffix)
 
 
 default_config: list[TextStylerConfig | TextStylerRegexConfig] = [
@@ -113,8 +109,8 @@ class TextStyler:
                         next_markings.append((marking, index, False, False, match))
                         found = True
                 else:
-                    is_start = text.startswith(marking.get_marking_start(), index)
-                    is_end = text.startswith(marking.get_marking_end(), index)
+                    is_start = text.startswith(marking.get_start(), index)
+                    is_end = text.startswith(marking.get_end(), index)
                     if is_start or is_end:
                         next_markings.append((marking, index, is_start, is_end, None))
                         found = True
@@ -165,19 +161,19 @@ class TextStyler:
                 if len(new_ast) == 0:
                     if is_start:
                         new_ast.push(config)
-                        new_start = index + len(config.get_marking_start())
+                        new_start = index + len(config.get_start())
                         paths.extend(self._helper(text, new_start, new_ast, skips))
                     else:
-                        new_start = index + len(config.get_marking_end())
+                        new_start = index + len(config.get_end())
                         paths.extend(self._helper(text, new_start, new_ast, skips + 1))
                 else:
                     if is_end and new_ast.peek() == config:
                         new_ast.pop()
-                        new_start = index + len(config.get_marking_end())
+                        new_start = index + len(config.get_end())
                         paths.extend(self._helper(text, new_start, new_ast, skips))
                     elif is_start:
                         new_ast.push(config)
-                        new_start = index + len(config.get_marking_start())
+                        new_start = index + len(config.get_start())
                         paths.extend(self._helper(text, new_start, new_ast, skips))
                 last_index = index
 
@@ -226,7 +222,7 @@ class TextStyler:
 
 class SyntaxTree:
     def __init__(self):
-        self.root: list[SyntaxTreeNode | str] = []
+        self.children: list[SyntaxTreeNode | str] = []
         self.curr: SyntaxTreeNode | None = None
         self.stack: list[TextStylerConfig | TextStylerRegexConfig] = []
 
@@ -254,7 +250,7 @@ class SyntaxTree:
 
     def _push(self, node: SyntaxTreeNode | str):
         if self.curr is None:
-            self.root.append(node)
+            self.children.append(node)
         else:
             self.curr.children.append(node)
 
@@ -274,14 +270,14 @@ class SyntaxTree:
         ast = SyntaxTree()
         children_copy: list[str | SyntaxTreeNode] = []
         found = None
-        for child in self.root:
+        for child in self.children:
             if isinstance(child, str):
                 children_copy.append(child)
             else:
                 child_copy, searched = child.copy(None, self.curr)
                 found = searched if searched is not None else found
                 children_copy.append(child_copy)
-        ast.root = children_copy
+        ast.children = children_copy
         ast.curr = found
         ast._init_stack()
         return ast
@@ -291,7 +287,7 @@ class SyntaxTree:
 
     @override
     def __str__(self) -> str:
-        return "".join(map(str, self.root))
+        return "".join(map(str, self.children))
 
 
 class SyntaxTreeNode:
@@ -336,30 +332,35 @@ class SyntaxTreeNode:
 
         return node, found
 
+    def _should_print_raw(self) -> bool:
+        if isinstance(self.matched, TextStylerRegexConfig):
+            return False
+
+        allow_inner: InnerStyle = self.matched.allow_inner
+        if allow_inner == InnerStyle.ALLOW or self.parent is None:
+            return False
+        if allow_inner == InnerStyle.DISALLOW_DIRECT:
+            return self.parent.matched == self.matched
+        if allow_inner == InnerStyle.DISALLOW_ANCESTOR:
+            curr = self.parent
+            while curr is not None:
+                if curr.matched == self.matched:
+                    return True
+                curr = curr.parent
+            return False
+
     @override
     def __str__(self):
         if isinstance(self.matched, TextStylerConfig):
-            inner_prefix, inner_suffix, outer_prefix, outer_suffix = "", "", "", ""
-            skip = self.matched.check_inner_skip(self)
+            inner = "".join(map(str, self.children))
+            if self._should_print_raw():
+                return self.matched.get_start() + inner + self.matched.get_end()
 
-            if not skip:
-                if self.matched.consume_start == ConsumptionStyle.INSIDE:
-                    outer_prefix = self.matched.get_marking_end()
-                if self.matched.consume_start == ConsumptionStyle.OUTSIDE:
-                    inner_prefix = self.matched.get_marking_start()
-
-                if self.matched.consume_end == ConsumptionStyle.INSIDE:
-                    outer_suffix = self.matched.get_marking_end()
-                if self.matched.consume_end == ConsumptionStyle.OUTSIDE:
-                    inner_suffix = self.matched.get_marking_end()
-
-            def transform(s: str, config: TextStylerConfig) -> str:
-                if skip:
-                    return config.get_marking_start() + s + config.get_marking_end()
-                return config.transform(s)
-
-            inner = inner_prefix + "".join(map(str, self.children)) + inner_suffix
-            return outer_prefix + transform(inner, self.matched) + outer_suffix
+            outer_prefix, inner_prefix, inner_suffix, outer_suffix = (
+                self.matched.get_wrappers()
+            )
+            inner = inner_prefix + inner + inner_suffix
+            return outer_prefix + self.matched.transform(inner) + outer_suffix
         elif self.match is not None:
             return sub(self.matched.regex, self.matched.replace, self.match.group(0))
         raise ValueError("TextStylerRegexConfig provided without a valid `match`")
