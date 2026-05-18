@@ -1,0 +1,21 @@
+[project]
+name = "text-styler"
+version = "0.1.0"
+description = "Library to convert a text with custom markings and convert it to html (or something else)."
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+
+[tool.pyright]
+reportUnusedCallResult = "none"
+pythonVersion = "3.14"
+venvPath = "."
+venv = ".venv"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+]
