@@ -99,20 +99,32 @@ type Action = TextAction | PushAction | PopAction | RegexAction
 @dataclass
 class Path:
     actions: list[Action] = field(default_factory=list)
+    stack: list[TextStylerConfig] = field(default_factory=list)
     num_pushes: int = 0
     num_pops: int = 0
     num_skips: int = 0
 
     def copy_and_push(self, action: Action) -> Path:
-        new_actions = self.actions.copy()
+        actions = self.actions.copy()
+        stack = self.stack.copy()
         if not isinstance(action, TextAction) or action.text:
-            new_actions.append(action)
+            actions.append(action)
 
-        if isinstance(action, PushAction) or isinstance(action, RegexAction):
-            return Path(new_actions, self.num_pushes + 1, self.num_pops, self.num_skips)
+        if isinstance(action, PushAction):
+            stack.append(action.config)
+            return Path(
+                actions, stack, self.num_pushes + 1, self.num_pops, self.num_skips
+            )
+        elif isinstance(action, RegexAction):
+            return Path(
+                actions, stack, self.num_pushes + 1, self.num_pops, self.num_skips
+            )
         elif isinstance(action, PopAction):
-            return Path(new_actions, self.num_pushes, self.num_pops + 1, self.num_skips)
-        return Path(new_actions, self.num_pushes, self.num_pops, self.num_skips)
+            stack.pop()
+            return Path(
+                actions, stack, self.num_pushes, self.num_pops + 1, self.num_skips
+            )
+        return Path(actions, stack, self.num_pushes, self.num_pops, self.num_skips)
 
 
 class TextStyler:
@@ -159,13 +171,7 @@ class TextStyler:
                 return next_markings
         return next_markings
 
-    def _helper(
-        self,
-        text: str,
-        start: int,
-        path: Path,
-        stack: list[TextStylerConfig],
-    ) -> list[Path]:
+    def _helper(self, text: str, start: int, path: Path) -> list[Path]:
         self.recursive_calls += 1
 
         if self.min_skips is not None and path.num_skips > self.min_skips:
@@ -177,7 +183,7 @@ class TextStyler:
         nexts = self._find_next(text, start)
 
         if start >= len(text) or len(nexts) == 0:
-            if len(stack) == 0:
+            if len(path.stack) == 0:
                 if self.min_skips is None:
                     self.min_skips = path.num_skips
                 self.min_skips = min(self.min_skips, path.num_skips)
@@ -196,7 +202,6 @@ class TextStyler:
 
             new_path = path.copy_and_push(TextAction(text[start:index]))
             new_path.num_skips = current_skips
-            new_stack = stack.copy()
             new_start = index
 
             if isinstance(config, TextStylerRegexConfig):
@@ -205,37 +210,34 @@ class TextStyler:
                 new_start += len(match.group(0))
                 new_path = new_path.copy_and_push(RegexAction(config, match))
             else:
-                is_at_top = len(new_stack) == 0
-                peek_tag = new_stack[-1] if not is_at_top else None
+                is_at_top = len(path.stack) == 0
+                peek_tag = path.stack[-1] if not is_at_top else None
                 if is_at_top:
                     if is_start:
                         new_path = new_path.copy_and_push(PushAction(config))
-                        new_stack.append(config)
                         new_start += len(config.get_start())
                     else:
                         new_start += len(config.get_end())
                 else:
                     if is_end and peek_tag == config:
                         new_path = new_path.copy_and_push(PopAction())
-                        new_stack.pop()
                         new_start += len(config.get_end())
                     elif is_start:
                         new_path = new_path.copy_and_push(PushAction(config))
-                        new_stack.append(config)
                         new_start += len(config.get_start())
 
             last_index = index
             if not new_path:
                 raise ValueError("Shouldn't reach here")
 
-            paths.extend(self._helper(text, new_start, new_path, new_stack))
+            paths.extend(self._helper(text, new_start, new_path))
 
         # Fallback branch: skip the current set of tokens entirely
         most_index = nexts[-1][1] + 1
         current_skips += 1
         new_path = path.copy_and_push(TextAction(text[start:most_index]))
         new_path.num_skips = current_skips
-        paths.extend(self._helper(text, most_index, new_path, stack.copy()))
+        paths.extend(self._helper(text, most_index, new_path))
 
         return paths
 
@@ -243,7 +245,7 @@ class TextStyler:
         if text == "":
             return text
         text = html.escape(text, quote=False)
-        paths = self._helper(text, 0, Path(), [])
+        paths = self._helper(text, 0, Path())
 
         # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
         # Then tie-break to the fewest blocks created
