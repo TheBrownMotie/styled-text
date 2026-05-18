@@ -1,10 +1,10 @@
 import html
 import re
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from re import Match, Pattern, sub
-from typing import override
+from typing import Literal, override
 
 
 class ConsumptionStyle(StrEnum):
@@ -72,6 +72,49 @@ default_config: list[TextStylerConfig | TextStylerRegexConfig] = [
 ]
 
 
+@dataclass
+class TextAction:
+    text: str
+
+
+@dataclass
+class PushAction:
+    config: TextStylerConfig
+
+
+@dataclass
+class PopAction:
+    pass
+
+
+@dataclass
+class RegexAction:
+    config: TextStylerRegexConfig
+    match: re.Match[str]
+
+
+type Action = TextAction | PushAction | PopAction | RegexAction
+
+
+@dataclass
+class Path:
+    actions: list[Action] = field(default_factory=list)
+    num_pushes: int = 0
+    num_pops: int = 0
+    num_skips: int = 0
+
+    def copy_and_push(self, action: Action) -> Path:
+        new_actions = self.actions.copy()
+        if not isinstance(action, TextAction) or action.text:
+            new_actions.append(action)
+
+        if isinstance(action, PushAction) or isinstance(action, RegexAction):
+            return Path(new_actions, self.num_pushes + 1, self.num_pops, self.num_skips)
+        elif isinstance(action, PopAction):
+            return Path(new_actions, self.num_pushes, self.num_pops + 1, self.num_skips)
+        return Path(new_actions, self.num_pushes, self.num_pops, self.num_skips)
+
+
 class TextStyler:
     def __init__(
         self, config: list[TextStylerConfig | TextStylerRegexConfig] | None = None
@@ -120,75 +163,117 @@ class TextStyler:
         self,
         text: str,
         start: int,
-        ast: SyntaxTree,
+        path: Path,
+        stack: list[TextStylerConfig],
         skips: int = 0,
-    ) -> list[tuple[str, int]]:
+    ) -> list[tuple[Path, int]]:
         self.recursive_calls += 1
+
         if self.min_skips is not None and skips > self.min_skips:
             return []
 
         if text == "":
-            return [("", skips)]
+            return [(Path(), skips)]
 
         nexts = self._find_next(text, start)
+
         if start >= len(text) or len(nexts) == 0:
-            if ast.at_top_of_stack():
-                self.min_skips = min(self.min_skips, skips) if self.min_skips else skips
-                ast.push_str(text[start:])
-                return [(str(ast), skips)]
+            if len(stack) == 0:
+                self.min_skips = (
+                    min(self.min_skips, skips) if self.min_skips is not None else skips
+                )
+                return [(path.copy_and_push(TextAction(text[start:])), skips)]
             else:
                 return []
 
         nexts = sorted(nexts, key=lambda i: i[1])
-        paths: list[tuple[str, int]] = []
+        paths: list[tuple[Path, int]] = []
         last_index: int | None = None
+        current_skips = skips
+
         for config, index, is_start, is_end, match in nexts:
             if last_index is not None and index > last_index:
-                skips += 1
+                current_skips += 1
 
-            new_ast = ast.copy()
-            new_ast.push_str(text[start:index])
+            new_path = path.copy_and_push(TextAction(text[start:index]))
+            new_path.num_skips = current_skips
+            new_stack = stack.copy()
             new_start = index
+
             if isinstance(config, TextStylerRegexConfig):
                 if not match:
                     raise ValueError("Match is missing from a regex")
                 new_start += len(match.group(0))
-                new_ast.push_regex(config, match)
+                new_path = new_path.copy_and_push(RegexAction(config, match))
             else:
-                if new_ast.at_top_of_stack():
+                is_at_top = len(new_stack) == 0
+                peek_tag = new_stack[-1] if not is_at_top else None
+                if is_at_top:
                     if is_start:
-                        new_ast.push(config)
+                        new_path = new_path.copy_and_push(PushAction(config))
+                        new_stack.append(config)
                         new_start += len(config.get_start())
                     else:
                         new_start += len(config.get_end())
                 else:
-                    if is_end and new_ast.peek() == config:
-                        new_ast.pop()
+                    if is_end and peek_tag == config:
+                        new_path = new_path.copy_and_push(PopAction())
+                        new_stack.pop()
                         new_start += len(config.get_end())
                     elif is_start:
-                        new_ast.push(config)
+                        new_path = new_path.copy_and_push(PushAction(config))
+                        new_stack.append(config)
                         new_start += len(config.get_start())
-                last_index = index
-            paths.extend(self._helper(text, new_start, new_ast, skips))
 
+            last_index = index
+            if not new_path:
+                raise ValueError("Shouldn't reach here")
+
+            paths.extend(
+                self._helper(text, new_start, new_path, new_stack, current_skips)
+            )
+
+        # Fallback branch: skip the current set of tokens entirely
         most_index = nexts[-1][1] + 1
-        new_ast = ast.copy()
-        new_ast.push_str(text[start:most_index])
-        paths.extend(self._helper(text, most_index, new_ast, skips + 1))
+        current_skips += 1
+        new_path = path.copy_and_push(TextAction(text[start:most_index]))
+        new_path.num_skips = current_skips
+        paths.extend(
+            self._helper(text, most_index, new_path, stack.copy(), current_skips)
+        )
+
         return paths
 
-    def _process_text(self, text: str):
+    def _process_text(self, text: str) -> str:
         if text == "":
             return text
         text = html.escape(text, quote=False)
-        ast = SyntaxTree()
-        paths = self._helper(text, 0, ast)
-        # First, get the paths that are tied for the lowest number of skipped markings:
-        least_skips = min(map(lambda p: p[1], paths))
-        paths = map(lambda p: p[0], filter(lambda p: p[1] == least_skips, paths))
-        # Now, break the tie with the path that produced the fewest number of tags:
-        paths = sorted(paths, key=lambda t: t.count("<"))
-        return paths[0]
+        paths = self._helper(text, 0, Path(), [])
+        print("HELLO")
+        print(paths)
+        # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
+        least_skips = min(map(lambda path: path[0].num_skips, paths))
+        winning_paths = [path[0] for path in paths if path[1] == least_skips]
+        # Tie-break to the fewest blocks
+        realized_trees: list[SyntaxTree] = []
+        for path in winning_paths:
+            ast = SyntaxTree()
+            for action in path.actions:
+                if isinstance(action, TextAction):
+                    ast.push_str(action.text)
+                elif isinstance(action, PushAction):
+                    ast.push(action.config)
+                elif isinstance(action, PopAction):
+                    ast.pop()
+                else:
+                    ast.push_regex(action.config, action.match)
+            realized_trees.append(ast)
+
+        realized_trees = sorted(realized_trees, key=lambda tree: str(tree).count("<"))
+        winning_tree = realized_trees[0]
+
+        # Returns the finalized evaluated string
+        return str(winning_tree)
 
     def process_text(self, text: str, multiline: bool = False):
         self.recursive_calls = 0
