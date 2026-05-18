@@ -186,8 +186,6 @@ class TextStyler:
         text = html.escape(text, quote=False)
         ast = SyntaxTree()
         paths = self._helper(text, 0, ast)
-        print("HELLO")
-        print("\n".join(map(str, paths)))
         # First, get the paths that are tied for the lowest number of skipped markings:
         least_skips = min(map(lambda p: p[1], paths))
         paths = map(lambda p: p[0], filter(lambda p: p[1] == least_skips, paths))
