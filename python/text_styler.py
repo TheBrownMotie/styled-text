@@ -96,35 +96,29 @@ class RegexAction:
 type Action = TextAction | PushAction | PopAction | RegexAction
 
 
-@dataclass
+@dataclass(frozen=True)
 class Path:
-    actions: list[Action] = field(default_factory=list)
-    stack: list[TextStylerConfig] = field(default_factory=list)
-    num_pushes: int = 0
-    num_pops: int = 0
+    actions: tuple[Action, ...] = ()
+    stack: tuple[TextStylerConfig, ...] = ()
     num_skips: int = 0
 
-    def copy_and_push(self, action: Action) -> Path:
-        actions = self.actions.copy()
-        stack = self.stack.copy()
+    @property
+    def num_pushes(self) -> int:
+        return sum(1 for a in self.actions if isinstance(a, (PushAction, RegexAction)))
+
+    def copy_and_push(self, action: Action, extra_skip: int = 0) -> Path:
+        new_actions = self.actions
         if not isinstance(action, TextAction) or action.text:
-            actions.append(action)
+            new_actions += (action,)
 
         if isinstance(action, PushAction):
-            stack.append(action.config)
-            return Path(
-                actions, stack, self.num_pushes + 1, self.num_pops, self.num_skips
-            )
-        elif isinstance(action, RegexAction):
-            return Path(
-                actions, stack, self.num_pushes + 1, self.num_pops, self.num_skips
-            )
+            new_stack = self.stack + (action.config,)
         elif isinstance(action, PopAction):
-            stack.pop()
-            return Path(
-                actions, stack, self.num_pushes, self.num_pops + 1, self.num_skips
-            )
-        return Path(actions, stack, self.num_pushes, self.num_pops, self.num_skips)
+            new_stack = self.stack[:-1]
+        else:
+            new_stack = self.stack
+
+        return Path(new_actions, new_stack, self.num_skips + extra_skip)
 
 
 class TextStyler:
@@ -173,10 +167,8 @@ class TextStyler:
 
     def _helper(self, text: str, start: int, path: Path) -> list[Path]:
         self.recursive_calls += 1
-
         if self.min_skips is not None and path.num_skips > self.min_skips:
             return []
-
         if text == "":
             return [Path()]
 
@@ -194,14 +186,13 @@ class TextStyler:
         nexts = sorted(nexts, key=lambda i: i[1])
         paths: list[Path] = []
         last_index: int | None = None
-        current_skips = path.num_skips
 
+        current_skips = 0
         for config, index, is_start, is_end, match in nexts:
             if last_index is not None and index > last_index:
                 current_skips += 1
 
-            new_path = path.copy_and_push(TextAction(text[start:index]))
-            new_path.num_skips = current_skips
+            new_path = path.copy_and_push(TextAction(text[start:index]), current_skips)
             new_start = index
 
             if isinstance(config, TextStylerRegexConfig):
@@ -234,9 +225,9 @@ class TextStyler:
 
         # Fallback branch: skip the current set of tokens entirely
         most_index = nexts[-1][1] + 1
-        current_skips += 1
-        new_path = path.copy_and_push(TextAction(text[start:most_index]))
-        new_path.num_skips = current_skips
+        new_path = path.copy_and_push(
+            TextAction(text[start:most_index]), current_skips + 1
+        )
         paths.extend(self._helper(text, most_index, new_path))
 
         return paths
@@ -314,21 +305,6 @@ class SyntaxTree:
             return None
         return self.curr.matched
 
-    def copy(self) -> SyntaxTree:
-        ast = SyntaxTree()
-        children_copy: list[str | SyntaxTreeNode] = []
-        found = None
-        for child in self.children:
-            if isinstance(child, str):
-                children_copy.append(child)
-            else:
-                child_copy, searched = child.copy(None, self.curr)
-                found = searched if searched is not None else found
-                children_copy.append(child_copy)
-        ast.children = children_copy
-        ast.curr = found
-        return ast
-
     def at_top_of_stack(self):
         return self.curr is None
 
@@ -356,28 +332,6 @@ class SyntaxTreeNode:
             stack.append(curr.matched)
             curr = curr.parent
         return stack
-
-    def copy(
-        self, parent: SyntaxTreeNode | None, search: SyntaxTreeNode | None
-    ) -> tuple[SyntaxTreeNode, SyntaxTreeNode | None]:
-        children_copy: list[str | SyntaxTreeNode] = []
-        found = None
-        node = SyntaxTreeNode(parent, self.matched, self.match)
-        for child in self.children:
-            if isinstance(child, str):
-                children_copy.append(child)
-            else:
-                child_copy, searched = child.copy(node, search)
-                found = searched if searched is not None else found
-                children_copy.append(child_copy)
-
-        node.children = children_copy
-        if self == search:
-            if found is not None and search is not None:
-                raise ValueError("How was I found twice?")
-            found = node
-
-        return node, found
 
     def _should_print_raw(self) -> bool:
         if isinstance(self.matched, TextStylerRegexConfig):
