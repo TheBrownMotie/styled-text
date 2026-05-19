@@ -4,8 +4,8 @@ from text_styler import (
     ConsumptionStyle,
     InnerStyle,
     TextStyler,
-    TextStylerConfig,
-    TextStylerRegexConfig,
+    TextStylerRegexRule,
+    TextStylerRule,
     html_tag,
 )
 
@@ -17,7 +17,7 @@ def test_empty_string1():
 
 def test_empty_string2():
     text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]  # unused
+        [TextStylerRule(start="*", transform=html_tag("strong"))]  # unused
     )
     assert text_styler.process_text("") == ""
 
@@ -35,21 +35,17 @@ def test_styletext_none2():
 
 
 def test_all_is_bold():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert text_styler.process_text("*this is bold*") == "<strong>this is bold</strong>"
 
 
 def test_all_is_italics():
-    text_styler = TextStyler([TextStylerConfig(start="_", transform=html_tag("em"))])
+    text_styler = TextStyler([TextStylerRule(start="_", transform=html_tag("em"))])
     assert text_styler.process_text("_this is italics_") == "<em>this is italics</em>"
 
 
 def test_some_is_bold():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text("this *is bold* in the middle")
         == "this <strong>is bold</strong> in the middle"
@@ -57,9 +53,7 @@ def test_some_is_bold():
 
 
 def test_beginning_is_bold():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text("*this is bold* at the start")
         == "<strong>this is bold</strong> at the start"
@@ -67,9 +61,7 @@ def test_beginning_is_bold():
 
 
 def test_ending_is_bold():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text("this is *bold at the end*")
         == "this is <strong>bold at the end</strong>"
@@ -77,23 +69,19 @@ def test_ending_is_bold():
 
 
 def test_empty_bold1():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert text_styler.process_text("**") == "<strong />"
 
 
 def test_empty_bold2():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert text_styler.process_text("hello ** world") == "hello <strong /> world"
 
 
 def test_empty_bold3():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="*", transform=html_tag("strong", auto_close_empty=False)
             )
         ]
@@ -104,7 +92,7 @@ def test_empty_bold3():
 def test_empty_bold4():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="*",
                 transform=html_tag("strong", auto_close_empty=True),
                 consume_start=ConsumptionStyle.OUTSIDE,
@@ -118,7 +106,7 @@ def test_empty_bold4():
 def test_empty_bold5():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="*",
                 transform=html_tag("strong", auto_close_empty=True),
                 consume_start=ConsumptionStyle.INSIDE,
@@ -132,8 +120,8 @@ def test_empty_bold5():
 def test_italics_within_bold():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
         ]
     )
     assert (
@@ -143,9 +131,7 @@ def test_italics_within_bold():
 
 
 def test_bold_without_end():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text("*this is bold that doesn't end")
         == "*this is bold that doesn't end"
@@ -153,9 +139,7 @@ def test_bold_without_end():
 
 
 def test_bold_at_end():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text("this is bold that doesn't start*")
         == "this is bold that doesn't start*"
@@ -165,8 +149,8 @@ def test_bold_at_end():
 def test_italics_within_bold_within_italics():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
         ]
     )
     assert (
@@ -178,9 +162,7 @@ def test_italics_within_bold_within_italics():
 
 
 def test_two_bolds_not_overlapping():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text(
             "*this is *bold and then bold again* but it still works*"
@@ -190,9 +172,7 @@ def test_two_bolds_not_overlapping():
 
 
 def test_three_asterisks():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     assert (
         text_styler.process_text(
             "*this is bold and then bold again* but doesn't close the second* bold"
@@ -204,8 +184,8 @@ def test_three_asterisks():
 def test_single_underscore_in_middle_of_bold():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
         ]
     )
     assert (
@@ -219,8 +199,8 @@ def test_single_underscore_in_middle_of_bold():
 def test_overlapping_regions1():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
         ]
     )
     assert (
@@ -234,8 +214,8 @@ def test_overlapping_regions1():
 def test_overlapping_regions2():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
         ]
     )
     assert (
@@ -249,8 +229,8 @@ def test_overlapping_regions2():
 def test_strikethrough():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="~~", transform=html_tag("del")),
-            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
         ]
     )
     assert (
@@ -262,8 +242,8 @@ def test_strikethrough():
 def test_strikethrough_and_sub():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
         ]
     )
     assert (
@@ -275,8 +255,8 @@ def test_strikethrough_and_sub():
 def test_strikethrough_within_sub():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
         ]
     )
     assert (
@@ -288,8 +268,8 @@ def test_strikethrough_within_sub():
 def test_sub_within_strikethrough():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
         ]
     )
     assert (
@@ -301,8 +281,8 @@ def test_sub_within_strikethrough():
 def test_triple_tilde_strikethrough_within_sub():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
         ]
     )
     assert (
@@ -314,8 +294,8 @@ def test_triple_tilde_strikethrough_within_sub():
 def test_triple_tilde_overall_sub_within_strikethrough():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
         ]
     )
     assert (
@@ -327,7 +307,7 @@ def test_triple_tilde_overall_sub_within_strikethrough():
 def test_different_start_and_end():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
             )
         ]
@@ -341,12 +321,12 @@ def test_different_start_and_end():
 def test_different_start_and_end_with_styling():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
             ),
-            TextStylerConfig(start="_", transform=html_tag("em")),
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="_", transform=html_tag("em")),
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
         ]
     )
     assert (
@@ -358,7 +338,7 @@ def test_different_start_and_end_with_styling():
 def test_start_and_end_inside_start_and_end():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
             )
         ]
@@ -374,8 +354,8 @@ def test_start_and_end_inside_start_and_end():
 def test_start_and_end_inside_start_and_end_disallow_direct():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="_", transform=html_tag("em")),
-            TextStylerConfig(
+            TextStylerRule(start="_", transform=html_tag("em")),
+            TextStylerRule(
                 start="<!",
                 transform=html_tag("span", {"class": "spoiler"}),
                 end="!>",
@@ -394,8 +374,8 @@ def test_start_and_end_inside_start_and_end_disallow_direct():
 def test_start_and_end_inside_start_and_end_disallow_ancestors():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="_", transform=html_tag("em")),
-            TextStylerConfig(
+            TextStylerRule(start="_", transform=html_tag("em")),
+            TextStylerRule(
                 start="<!",
                 transform=html_tag("span", {"class": "spoiler"}),
                 end="!>",
@@ -414,7 +394,7 @@ def test_start_and_end_inside_start_and_end_disallow_ancestors():
 def test_multiquote():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start=">",
                 transform=html_tag("blockquote"),
                 end="\n",
@@ -432,7 +412,7 @@ def test_multiquote():
 def test_multiquote_preserving_start_marking():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start=">",
                 transform=html_tag("blockquote"),
                 end="\n",
@@ -451,7 +431,7 @@ def test_multiquote_preserving_start_marking():
 def test_multiquote_preserving_all():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start=">",
                 transform=html_tag("blockquote"),
                 end="\n",
@@ -469,9 +449,7 @@ def test_multiquote_preserving_all():
 
 
 def test_multiline_true():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "*this starts bold\nand finishes here*"
     assert (
         text_styler.process_text(message, multiline=True)
@@ -480,9 +458,7 @@ def test_multiline_true():
 
 
 def test_multiline_false():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "*this starts bold\nand finishes here*"
     assert (
         text_styler.process_text(message, multiline=False)
@@ -493,7 +469,7 @@ def test_multiline_false():
 def test_non_html_transform():
     # A config that just uppercase the inner text instead of wrapping in HTML
     text_styler = TextStyler(
-        [TextStylerConfig(start="!", transform=lambda x: x.upper(), end="!")]
+        [TextStylerRule(start="!", transform=lambda x: x.upper(), end="!")]
     )
     assert text_styler.process_text("this is a !loud! word") == "this is a LOUD word"
 
@@ -501,25 +477,25 @@ def test_non_html_transform():
 def test_keep_all_markings_outside():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="*",
                 transform=html_tag("strong"),
                 consume_start=ConsumptionStyle.OUTSIDE,
                 consume_end=ConsumptionStyle.OUTSIDE,
             ),
-            TextStylerConfig(
+            TextStylerRule(
                 start="_",
                 transform=html_tag("em"),
                 consume_start=ConsumptionStyle.OUTSIDE,
                 consume_end=ConsumptionStyle.OUTSIDE,
             ),
-            TextStylerConfig(
+            TextStylerRule(
                 start="~~",
                 transform=html_tag("del"),
                 consume_start=ConsumptionStyle.OUTSIDE,
                 consume_end=ConsumptionStyle.OUTSIDE,
             ),
-            TextStylerConfig(
+            TextStylerRule(
                 start="~",
                 transform=html_tag("sub"),
                 consume_start=ConsumptionStyle.OUTSIDE,
@@ -539,25 +515,25 @@ def test_keep_all_markings_outside():
 def test_keep_all_markings_inside():
     text_styler = TextStyler(
         [
-            TextStylerConfig(
+            TextStylerRule(
                 start="*",
                 transform=html_tag("strong"),
                 consume_start=ConsumptionStyle.INSIDE,
                 consume_end=ConsumptionStyle.INSIDE,
             ),
-            TextStylerConfig(
+            TextStylerRule(
                 start="_",
                 transform=html_tag("em"),
                 consume_start=ConsumptionStyle.INSIDE,
                 consume_end=ConsumptionStyle.INSIDE,
             ),
-            TextStylerConfig(
+            TextStylerRule(
                 start="~~",
                 transform=html_tag("del"),
                 consume_start=ConsumptionStyle.INSIDE,
                 consume_end=ConsumptionStyle.INSIDE,
             ),
-            TextStylerConfig(
+            TextStylerRule(
                 start="~",
                 transform=html_tag("sub"),
                 consume_start=ConsumptionStyle.INSIDE,
@@ -577,7 +553,7 @@ def test_keep_all_markings_inside():
 def test_regex():
     text_styler = TextStyler(
         [
-            TextStylerRegexConfig(
+            TextStylerRegexRule(
                 regex=re.compile(r"&gt;&gt;(\d+)"),
                 replace=r"<link id='\1'>\g<0></link>",
             )
@@ -595,8 +571,8 @@ def test_regex():
 def test_regex_wrapped_with_strong():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerRegexConfig(
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRegexRule(
                 regex=re.compile(r"&gt;&gt;(\d+)"),
                 replace=r"<link id='\1'>\g<0></link>",
             ),
@@ -614,8 +590,8 @@ def test_regex_wrapped_with_strong():
 def test_regex_wrapped_with_strong_inside_it1():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerRegexConfig(
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRegexRule(
                 regex=re.compile(r"&gt;&gt;([*\d]+)"),
                 replace=r"<link id='\1'>\g<0></link>",
             ),
@@ -633,8 +609,8 @@ def test_regex_wrapped_with_strong_inside_it1():
 def test_regex_wrapped_with_strong_inside_it2():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerRegexConfig(
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRegexRule(
                 regex=re.compile(r"&gt;&gt;([*\d]+)"),
                 replace=r"<link id='\1'>\g<0></link>",
             ),
@@ -652,8 +628,8 @@ def test_regex_wrapped_with_strong_inside_it2():
 def test_regex_wrapped_with_strong_inside_it3():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerRegexConfig(
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRegexRule(
                 regex=re.compile(r"&gt;&gt;([*\d]+)"),
                 replace=r"<link id='\1'>\g<0></link>",
             ),
@@ -671,11 +647,11 @@ def test_regex_wrapped_with_strong_inside_it3():
 def test_regex_within_regex():
     text_styler = TextStyler(
         [
-            TextStylerRegexConfig(  # imageboard style implied board link
+            TextStylerRegexRule(  # imageboard style implied board link
                 regex=re.compile(r"/anime/"),
                 replace=r"<link to='/anime'>/anime/</link>",
             ),
-            TextStylerRegexConfig(  # external link
+            TextStylerRegexRule(  # external link
                 regex=re.compile(r"https://\w+\.\w+.com(/\w+)+"),
                 replace=r"<a href='\g<0>'>\g<0></a>",
             ),
@@ -696,14 +672,14 @@ def test_regex_within_regex():
 def test_big_message():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(
                 start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
             ),
-            TextStylerRegexConfig(  # external link
+            TextStylerRegexRule(  # external link
                 regex=re.compile(r"https://\w+\.\w+.com(/\w+)*"),
                 replace=r"<a href='\g<0>'>\g<0></a>",
             ),
@@ -720,14 +696,14 @@ def test_big_message():
 def test_big_message_some_escaped():
     text_styler = TextStyler(
         [
-            TextStylerConfig(start="*", transform=html_tag("strong")),
-            TextStylerConfig(start="_", transform=html_tag("em")),
-            TextStylerConfig(start="~~", transform=html_tag("del")),
-            TextStylerConfig(start="~", transform=html_tag("sub")),
-            TextStylerConfig(
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(start="_", transform=html_tag("em")),
+            TextStylerRule(start="~~", transform=html_tag("del")),
+            TextStylerRule(start="~", transform=html_tag("sub")),
+            TextStylerRule(
                 start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
             ),
-            TextStylerRegexConfig(  # external link
+            TextStylerRegexRule(  # external link
                 regex=re.compile(r"https://\w+\.\w+.com(/\w+)*"),
                 replace=r"<a href='\g<0>'>\g<0></a>",
             ),
@@ -742,17 +718,13 @@ def test_big_message_some_escaped():
 
 
 def test_escape_one_instance():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "hello \\* wonderful"
     assert text_styler.process_text(message) == "hello * wonderful"
 
 
 def test_escape_three_instances():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "hello \\*wonderful*beautiful*"
     assert (
         text_styler.process_text(message)
@@ -761,9 +733,7 @@ def test_escape_three_instances():
 
 
 def test_many_escapes1():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "hello \\\\*wonderful*beautiful*"
     assert (
         text_styler.process_text(message)
@@ -772,9 +742,7 @@ def test_many_escapes1():
 
 
 def test_many_escapes2():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "hello \\\\\\*wonderful*beautiful*"
     assert (
         text_styler.process_text(message)
@@ -783,9 +751,7 @@ def test_many_escapes2():
 
 
 def test_html_escaping():
-    text_styler = TextStyler(
-        [TextStylerConfig(start="*", transform=html_tag("strong"))]
-    )
+    text_styler = TextStyler([TextStylerRule(start="*", transform=html_tag("strong"))])
     message = "Normal <script>alert(1)</script> and *bold <script>alert(2)</script>*"
     assert (
         text_styler.process_text(message)

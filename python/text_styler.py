@@ -20,7 +20,7 @@ class InnerStyle(StrEnum):
 
 
 @dataclass
-class TextStylerRegexConfig:
+class TextStylerRegexRule:
     regex: Pattern[str]
     replace: str
 
@@ -36,7 +36,7 @@ def html_tag(
 
 
 @dataclass
-class TextStylerConfig:
+class TextStylerRule:
     start: str
     transform: Callable[[str], str]
     end: str | None = None
@@ -72,7 +72,7 @@ class TextAction:
 
 @dataclass
 class PushAction:
-    config: TextStylerConfig
+    rule: TextStylerRule
 
 
 @dataclass
@@ -82,20 +82,20 @@ class PopAction:
 
 @dataclass
 class RegexAction:
-    config: TextStylerRegexConfig
+    rule: TextStylerRegexRule
     match: re.Match[str]
 
 
 # Used in _find_next
 class NextStyle(NamedTuple):
-    config: TextStylerConfig
+    rule: TextStylerRule
     position: int
     is_start: bool
     is_end: bool
 
 
 class NextRegex(NamedTuple):
-    config: TextStylerRegexConfig
+    rule: TextStylerRegexRule
     position: int
     match: Match[str]
 
@@ -106,14 +106,14 @@ type Action = TextAction | PushAction | PopAction | RegexAction
 @dataclass(frozen=True)
 class Path:
     actions: tuple[Action, ...] = ()
-    stack: tuple[TextStylerConfig, ...] = ()
+    stack: tuple[TextStylerRule, ...] = ()
     num_skips: int = 0
 
     @property
     def num_pushes(self) -> int:
         return sum(1 for a in self.actions if isinstance(a, (PushAction, RegexAction)))
 
-    def peek(self) -> TextStylerConfig | None:
+    def peek(self) -> TextStylerRule | None:
         return self.stack[-1] if len(self.stack) > 0 else None
 
     def copy_and_push(self, action: Action, extra_skip: int = 0) -> Path:
@@ -122,7 +122,7 @@ class Path:
             new_actions += (action,)
 
         if isinstance(action, PushAction):
-            new_stack = self.stack + (action.config,)
+            new_stack = self.stack + (action.rule,)
         elif isinstance(action, PopAction):
             new_stack = self.stack[:-1]
         else:
@@ -132,8 +132,8 @@ class Path:
 
 
 class TextStyler:
-    def __init__(self, config: list[TextStylerConfig | TextStylerRegexConfig]):
-        self.config: list[TextStylerConfig | TextStylerRegexConfig] = config
+    def __init__(self, rules: list[TextStylerRule | TextStylerRegexRule]):
+        self.rules: list[TextStylerRule | TextStylerRegexRule] = rules
         self.min_skips: int | None = None
 
     def process_text(self, text: str, multiline: bool = False):
@@ -158,11 +158,11 @@ class TextStyler:
             if isinstance(action, TextAction):
                 ast.push_str(action.text)
             elif isinstance(action, PushAction):
-                ast.push(action.config)
+                ast.push(action.rule)
             elif isinstance(action, PopAction):
                 ast.pop()
             else:
-                ast.push_regex(action.config, action.match)
+                ast.push_regex(action.rule, action.match)
 
         return str(ast)
 
@@ -189,14 +189,14 @@ class TextStyler:
 
             if isinstance(next, NextRegex):
                 new_start += len(next.match.group(0))
-                new_path = new_path.copy_and_push(RegexAction(next.config, next.match))
+                new_path = new_path.copy_and_push(RegexAction(next.rule, next.match))
             else:
-                config, _, is_start, is_end = next
-                new_start += len(config.get_start() if is_start else config.get_end())
-                if is_end and len(path.stack) > 0 and path.peek() == config:
+                rule, _, is_start, is_end = next
+                new_start += len(rule.get_start() if is_start else rule.get_end())
+                if is_end and len(path.stack) > 0 and path.peek() == rule:
                     new_path = new_path.copy_and_push(PopAction())
                 elif is_start:
-                    new_path = new_path.copy_and_push(PushAction(config))
+                    new_path = new_path.copy_and_push(PushAction(rule))
                 # else is_end but the top of the stack doesn't match? new_start moves forward but stack stays the same
 
             paths.extend(self._helper(text, new_start, new_path))
@@ -211,8 +211,8 @@ class TextStyler:
         nexts: list[NextStyle | NextRegex] = []
         escaped = False
         for index in range(start, len(text)):
-            for marking in self.config:
-                if isinstance(marking, TextStylerRegexConfig):
+            for marking in self.rules:
+                if isinstance(marking, TextStylerRegexRule):
                     if match := marking.regex.match(text, index):
                         nexts.append(NextRegex(marking, index, match))
                 elif not escaped:
@@ -232,13 +232,13 @@ class SyntaxTree:
         self.children: list[SyntaxTreeNode | str] = []
         self.curr: SyntaxTreeNode | None = None
 
-    def push(self, matched: TextStylerConfig):
-        new_node = SyntaxTreeNode(self.curr, matched)
+    def push(self, rule: TextStylerRule):
+        new_node = SyntaxTreeNode(self.curr, rule)
         self._push(new_node)
         self.curr = new_node
 
-    def push_regex(self, matched: TextStylerRegexConfig, match: re.Match[str]):
-        new_node = SyntaxTreeNode(self.curr, matched, match)
+    def push_regex(self, rule: TextStylerRegexRule, match: re.Match[str]):
+        new_node = SyntaxTreeNode(self.curr, rule, match)
         self._push(new_node)
 
     def push_str(self, text: str):
@@ -265,45 +265,45 @@ class SyntaxTreeNode:
     def __init__(
         self,
         parent: SyntaxTreeNode | None,
-        matched: TextStylerConfig | TextStylerRegexConfig,
+        rule: TextStylerRule | TextStylerRegexRule,
         match: re.Match[str] | None = None,
     ):
         self.parent: SyntaxTreeNode | None = parent
-        self.matched: TextStylerConfig | TextStylerRegexConfig = matched
+        self.rule: TextStylerRule | TextStylerRegexRule = rule
         self.match: re.Match[str] | None = match
 
         self.children: list[str | SyntaxTreeNode] = []
-        self.path: tuple[TextStylerConfig, ...] = ()
-        if parent is not None and isinstance(parent.matched, TextStylerConfig):
-            self.path = parent.path + (parent.matched,)
+        self.path: tuple[TextStylerRule, ...] = ()
+        if parent is not None and isinstance(parent.rule, TextStylerRule):
+            self.path = parent.path + (parent.rule,)
 
     def push(self, child: str | SyntaxTreeNode):
         self.children.append(child)
 
     @override
     def __str__(self):
-        if isinstance(self.matched, TextStylerConfig):
+        if isinstance(self.rule, TextStylerRule):
             inner = "".join(map(str, self.children))
             if self._should_print_raw():
-                return self.matched.get_start() + inner + self.matched.get_end()
+                return self.rule.get_start() + inner + self.rule.get_end()
 
             outer_prefix, inner_prefix, inner_suffix, outer_suffix = (
-                self.matched.get_wrappers()
+                self.rule.get_wrappers()
             )
             inner = inner_prefix + inner + inner_suffix
-            return outer_prefix + self.matched.transform(inner) + outer_suffix
+            return outer_prefix + self.rule.transform(inner) + outer_suffix
         elif self.match is not None:
-            return sub(self.matched.regex, self.matched.replace, self.match.group(0))
-        raise ValueError("TextStylerRegexConfig provided without a valid `match`")
+            return sub(self.rule.regex, self.rule.replace, self.match.group(0))
+        raise ValueError("TextStylerRegexRule provided without a valid `match`")
 
     def _should_print_raw(self) -> bool:
-        if isinstance(self.matched, TextStylerRegexConfig):
+        if isinstance(self.rule, TextStylerRegexRule):
             return False
 
-        allow_inner: InnerStyle = self.matched.allow_inner
+        allow_inner: InnerStyle = self.rule.allow_inner
         if allow_inner == InnerStyle.ALLOW or self.parent is None:
             return False
         if allow_inner == InnerStyle.DISALLOW_DIRECT:
-            return self.parent.matched == self.matched
+            return self.parent.rule == self.rule
         if allow_inner == InnerStyle.DISALLOW_ANCESTOR:
-            return self.matched in self.path
+            return self.rule in self.path
