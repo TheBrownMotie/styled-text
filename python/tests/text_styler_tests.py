@@ -10,6 +10,18 @@ from text_styler import (
 )
 
 
+def test_empty_string1():
+    text_styler = TextStyler([])
+    assert text_styler.process_text("") == ""
+
+
+def test_empty_string2():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]  # unused
+    )
+    assert text_styler.process_text("") == ""
+
+
 def test_styletext_none1():
     text_styler = TextStyler([])
     message = "this is normal"
@@ -62,6 +74,59 @@ def test_ending_is_bold():
         text_styler.process_text("this is *bold at the end*")
         == "this is <strong>bold at the end</strong>"
     )
+
+
+def test_empty_bold1():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert text_styler.process_text("**") == "<strong />"
+
+
+def test_empty_bold2():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    assert text_styler.process_text("hello ** world") == "hello <strong /> world"
+
+
+def test_empty_bold3():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="*", transform=html_tag("strong", auto_close_empty=False)
+            )
+        ]
+    )
+    assert text_styler.process_text("**") == "<strong></strong>"
+
+
+def test_empty_bold4():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="*",
+                transform=html_tag("strong", auto_close_empty=True),
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            )
+        ]
+    )
+    assert text_styler.process_text("**") == "<strong>**</strong>"
+
+
+def test_empty_bold5():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(
+                start="*",
+                transform=html_tag("strong", auto_close_empty=True),
+                consume_start=ConsumptionStyle.INSIDE,
+                consume_end=ConsumptionStyle.INSIDE,
+            )
+        ]
+    )
+    assert text_styler.process_text("**") == "*<strong />*"
 
 
 def test_italics_within_bold():
@@ -403,6 +468,36 @@ def test_multiquote_preserving_all():
     )
 
 
+def test_multiline_true():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "*this starts bold\nand finishes here*"
+    assert (
+        text_styler.process_text(message, multiline=True)
+        == "<strong>this starts bold\nand finishes here</strong>"
+    )
+
+
+def test_multiline_false():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "*this starts bold\nand finishes here*"
+    assert (
+        text_styler.process_text(message, multiline=False)
+        == "*this starts bold\nand finishes here*"
+    )
+
+
+def test_non_html_transform():
+    # A config that just uppercase the inner text instead of wrapping in HTML
+    text_styler = TextStyler(
+        [TextStylerConfig(start="!", transform=lambda x: x.upper(), end="!")]
+    )
+    assert text_styler.process_text("this is a !loud! word") == "this is a LOUD word"
+
+
 def test_keep_all_markings_outside():
     text_styler = TextStyler(
         [
@@ -684,4 +779,15 @@ def test_many_escapes2():
     assert (
         text_styler.process_text(message)
         == "hello \\*wonderful<strong>beautiful</strong>"
+    )
+
+
+def test_html_escaping():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "Normal <script>alert(1)</script> and *bold <script>alert(2)</script>*"
+    assert (
+        text_styler.process_text(message)
+        == "Normal &lt;script&gt;alert(1)&lt;/script&gt; and <strong>bold &lt;script&gt;alert(2)&lt;/script&gt;</strong>"
     )

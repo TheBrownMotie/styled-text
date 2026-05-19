@@ -26,10 +26,13 @@ class TextStylerRegexConfig:
 
 
 def html_tag(
-    tag: str, attributes: dict[str, str] | None = None
+    tag: str, attributes: dict[str, str] | None = None, auto_close_empty: bool = True
 ) -> Callable[[str], str]:
     attrs = "".join(f" {k}='{v}'" for k, v in attributes.items()) if attributes else ""
-    return lambda text: f"<{tag}{attrs}>{text}</{tag}>"
+    start = f"{tag}{attrs}"
+    return lambda text: (
+        f"<{start} />" if auto_close_empty and not text else f"<{start}>{text}</{tag}>"
+    )
 
 
 @dataclass
