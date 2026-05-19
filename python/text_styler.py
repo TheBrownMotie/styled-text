@@ -4,7 +4,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from enum import StrEnum
 from re import Match, Pattern, sub
-from typing import Literal, override
+from typing import Literal, NamedTuple, override
 
 
 class ConsumptionStyle(StrEnum):
@@ -93,6 +93,20 @@ class RegexAction:
     match: re.Match[str]
 
 
+# Used in _find_next
+class NextStyle(NamedTuple):
+    config: TextStylerConfig
+    position: int
+    is_start: bool
+    is_end: bool
+
+
+class NextRegex(NamedTuple):
+    config: TextStylerRegexConfig
+    position: int
+    match: Match[str]
+
+
 type Action = TextAction | PushAction | PopAction | RegexAction
 
 
@@ -105,6 +119,9 @@ class Path:
     @property
     def num_pushes(self) -> int:
         return sum(1 for a in self.actions if isinstance(a, (PushAction, RegexAction)))
+
+    def peek(self) -> TextStylerConfig | None:
+        return self.stack[-1] if len(self.stack) > 0 else None
 
     def copy_and_push(self, action: Action, extra_skip: int = 0) -> Path:
         new_actions = self.actions
@@ -122,115 +139,19 @@ class Path:
 
 
 class TextStyler:
-    def __init__(
-        self, config: list[TextStylerConfig | TextStylerRegexConfig] | None = None
-    ):
-        if config is None:
-            config = default_config
+    def __init__(self, config: list[TextStylerConfig | TextStylerRegexConfig]):
         self.config: list[TextStylerConfig | TextStylerRegexConfig] = config
-        self.recursive_calls: int = 0
         self.min_skips: int | None = None
 
-    def _find_next(
-        self, text: str, start: int
-    ) -> list[
-        tuple[
-            TextStylerConfig | TextStylerRegexConfig, int, bool, bool, Match[str] | None
-        ]
-    ]:
-        next_markings: list[
-            tuple[
-                TextStylerConfig | TextStylerRegexConfig,
-                int,
-                bool,
-                bool,
-                Match[str] | None,
-            ]
-        ] = []
-        for index in range(start, len(text)):
-            found = False
-            for marking in self.config:
-                if isinstance(marking, TextStylerRegexConfig):
-                    if match := marking.regex.match(text, index):
-                        next_markings.append((marking, index, False, False, match))
-                        found = True
-                else:
-                    is_start = text.startswith(marking.get_start(), index)
-                    is_end = text.startswith(marking.get_end(), index)
-                    if is_start or is_end:
-                        next_markings.append((marking, index, is_start, is_end, None))
-                        found = True
+    def process_text(self, text: str, multiline: bool = False):
+        self.min_skips = None
+        if multiline:
+            return self._process_text(text)
 
-            if found:
-                return next_markings
-        return next_markings
-
-    def _helper(self, text: str, start: int, path: Path) -> list[Path]:
-        self.recursive_calls += 1
-        if self.min_skips is not None and path.num_skips > self.min_skips:
-            return []
-        if text == "":
-            return [Path()]
-
-        nexts = self._find_next(text, start)
-
-        if start >= len(text) or len(nexts) == 0:
-            if len(path.stack) == 0:
-                if self.min_skips is None:
-                    self.min_skips = path.num_skips
-                self.min_skips = min(self.min_skips, path.num_skips)
-                return [path.copy_and_push(TextAction(text[start:]))]
-            else:
-                return []
-
-        nexts = sorted(nexts, key=lambda i: i[1])
-        paths: list[Path] = []
-        last_index: int | None = None
-
-        current_skips = 0
-        for config, index, is_start, is_end, match in nexts:
-            if last_index is not None and index > last_index:
-                current_skips += 1
-
-            new_path = path.copy_and_push(TextAction(text[start:index]), current_skips)
-            new_start = index
-
-            if isinstance(config, TextStylerRegexConfig):
-                if not match:
-                    raise ValueError("Match is missing from a regex")
-                new_start += len(match.group(0))
-                new_path = new_path.copy_and_push(RegexAction(config, match))
-            else:
-                is_at_top = len(path.stack) == 0
-                peek_tag = path.stack[-1] if not is_at_top else None
-                if is_at_top:
-                    if is_start:
-                        new_path = new_path.copy_and_push(PushAction(config))
-                        new_start += len(config.get_start())
-                    else:
-                        new_start += len(config.get_end())
-                else:
-                    if is_end and peek_tag == config:
-                        new_path = new_path.copy_and_push(PopAction())
-                        new_start += len(config.get_end())
-                    elif is_start:
-                        new_path = new_path.copy_and_push(PushAction(config))
-                        new_start += len(config.get_start())
-
-            last_index = index
-            if not new_path:
-                raise ValueError("Shouldn't reach here")
-
-            paths.extend(self._helper(text, new_start, new_path))
-
-        # Fallback branch: skip the current set of tokens entirely
-        most_index = nexts[-1][1] + 1
-        new_path = path.copy_and_push(
-            TextAction(text[start:most_index]), current_skips + 1
-        )
-        paths.extend(self._helper(text, most_index, new_path))
-
-        return paths
+        texts = re.findall(r".*?\n|.+", text)
+        texts = map(self._process_text, texts)
+        text = "".join(texts)
+        return text
 
     def _process_text(self, text: str) -> str:
         if text == "":
@@ -258,17 +179,63 @@ class TextStyler:
 
         return str(ast)
 
-    def process_text(self, text: str, multiline: bool = False):
-        self.recursive_calls = 0
-        self.min_skips = None
-        texts = [text]
-        if multiline:
-            return self._process_text(text)
+    def _helper(self, text: str, start: int, path: Path) -> list[Path]:
+        if self.min_skips is not None and path.num_skips > self.min_skips:
+            return []
+        if text == "":
+            return [Path()]
 
-        texts = re.findall(r".*?\n|.+", text)
-        texts = map(self._process_text, texts)
-        text = "".join(texts)
-        return text
+        # Get the next token(s)
+        nexts = self._find_next(text, start)
+
+        # Base case, if there aren't any more tokens, return success or fail
+        if start >= len(text) or len(nexts) == 0:
+            if len(path.stack) > 0:
+                return []
+            self.min_skips = min(self.min_skips or path.num_skips, path.num_skips)
+            return [path.copy_and_push(TextAction(text[start:]))]
+
+        paths: list[Path] = []
+        for next in nexts:
+            new_path = path.copy_and_push(TextAction(text[start : next.position]))
+            new_start = next.position
+
+            if isinstance(next, NextRegex):
+                new_start += len(next.match.group(0))
+                new_path = new_path.copy_and_push(RegexAction(next.config, next.match))
+            else:
+                config, _, is_start, is_end = next
+                new_start += len(config.get_start() if is_start else config.get_end())
+                if is_end and len(path.stack) > 0 and path.peek() == config:
+                    new_path = new_path.copy_and_push(PopAction())
+                elif is_start:
+                    new_path = new_path.copy_and_push(PushAction(config))
+                # else is_end but the top of the stack doesn't match? new_start moves forward but stack stays the same
+
+            paths.extend(self._helper(text, new_start, new_path))
+
+        # Fallback branch: skip the current set of tokens entirely
+        new_start = nexts[-1].position + 1
+        new_path = path.copy_and_push(TextAction(text[start:new_start]), 1)
+        paths.extend(self._helper(text, new_start, new_path))
+        return paths
+
+    def _find_next(self, text: str, start: int) -> list[NextStyle | NextRegex]:
+        nexts: list[NextStyle | NextRegex] = []
+        for index in range(start, len(text)):
+            for marking in self.config:
+                if isinstance(marking, TextStylerRegexConfig):
+                    if match := marking.regex.match(text, index):
+                        nexts.append(NextRegex(marking, index, match))
+                else:
+                    is_start = text.startswith(marking.get_start(), index)
+                    is_end = text.startswith(marking.get_end(), index)
+                    if is_start or is_end:
+                        nexts.append(NextStyle(marking, index, is_start, is_end))
+
+            if len(nexts) > 0:
+                return nexts
+        return []
 
 
 class SyntaxTree:
@@ -293,20 +260,12 @@ class SyntaxTree:
         if self.curr is None:
             self.children.append(node)
         else:
-            self.curr.children.append(node)
+            self.curr.push(node)
 
     def pop(self):
         if self.curr is None:
             raise ValueError("Attempted to pop() when already at root")
         self.curr = self.curr.parent
-
-    def peek(self) -> TextStylerConfig | None:
-        if self.curr is None or not isinstance(self.curr.matched, TextStylerConfig):
-            return None
-        return self.curr.matched
-
-    def at_top_of_stack(self):
-        return self.curr is None
 
     @override
     def __str__(self) -> str:
@@ -322,33 +281,15 @@ class SyntaxTreeNode:
     ):
         self.parent: SyntaxTreeNode | None = parent
         self.matched: TextStylerConfig | TextStylerRegexConfig = matched
-        self.children: list[str | SyntaxTreeNode] = []
         self.match: re.Match[str] | None = match
 
-    def current_path(self) -> list[TextStylerConfig | TextStylerRegexConfig]:
-        stack: list[TextStylerConfig | TextStylerRegexConfig] = []
-        curr = self
-        while curr is not None:
-            stack.append(curr.matched)
-            curr = curr.parent
-        return stack
+        self.children: list[str | SyntaxTreeNode] = []
+        self.path: tuple[TextStylerConfig, ...] = ()
+        if parent is not None and isinstance(parent.matched, TextStylerConfig):
+            self.path = parent.path + (parent.matched,)
 
-    def _should_print_raw(self) -> bool:
-        if isinstance(self.matched, TextStylerRegexConfig):
-            return False
-
-        allow_inner: InnerStyle = self.matched.allow_inner
-        if allow_inner == InnerStyle.ALLOW or self.parent is None:
-            return False
-        if allow_inner == InnerStyle.DISALLOW_DIRECT:
-            return self.parent.matched == self.matched
-        if allow_inner == InnerStyle.DISALLOW_ANCESTOR:
-            curr = self.parent
-            while curr is not None:
-                if curr.matched == self.matched:
-                    return True
-                curr = curr.parent
-            return False
+    def push(self, child: str | SyntaxTreeNode):
+        self.children.append(child)
 
     @override
     def __str__(self):
@@ -365,3 +306,15 @@ class SyntaxTreeNode:
         elif self.match is not None:
             return sub(self.matched.regex, self.matched.replace, self.match.group(0))
         raise ValueError("TextStylerRegexConfig provided without a valid `match`")
+
+    def _should_print_raw(self) -> bool:
+        if isinstance(self.matched, TextStylerRegexConfig):
+            return False
+
+        allow_inner: InnerStyle = self.matched.allow_inner
+        if allow_inner == InnerStyle.ALLOW or self.parent is None:
+            return False
+        if allow_inner == InnerStyle.DISALLOW_DIRECT:
+            return self.parent.matched == self.matched
+        if allow_inner == InnerStyle.DISALLOW_ANCESTOR:
+            return self.matched in self.path

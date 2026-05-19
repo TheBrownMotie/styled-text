@@ -64,7 +64,6 @@ def test_simple_ast_copy(em_config: TextStylerConfig):
     ast.pop()
     ast.push_str(" world")
 
-    ast = ast.copy()
     assert ast.curr is None
     assert ast.children[0] == "hello "
     assert ast.children[2] == " world"
@@ -79,11 +78,9 @@ def test_simple_ast_copy_in_middle(em_config: TextStylerConfig):
     ast = SyntaxTree()
     ast.push_str("hello ")
     ast.push(em_config)
-    ast = ast.copy()
     assert ast.curr is not None
     assert ast.curr.children == []
     assert ast.curr.matched == em_config
-    assert ast.stack == [em_config]
     ast.push_str("my")
     ast.pop()
     ast.push_str(" world")
@@ -103,7 +100,7 @@ def test_simple_ast_peek(em_config: TextStylerConfig):
     ast.push_str("hello ")
     ast.push(em_config)
     ast.push_str("my")
-    assert ast.peek() == em_config
+    assert isinstance(ast.curr, TextStylerConfig) and ast.curr.matched == em_config
     ast.pop()
     ast.push_str(" world")
 
