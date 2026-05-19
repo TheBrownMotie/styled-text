@@ -1,11 +1,12 @@
 {
-  "name": "styled-text",
+  "name": "@brownmotie/styled-text-react",
   "version": "0.1.0",
-  "description": "Library to convert a text with custom markings and convert it to html (or something else).",
+  "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "main": "index.js",
   "keywords": [],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
+  "readme": "README.md",
   "type": "commonjs",
   "dependencies": {},
   "devDependencies": {

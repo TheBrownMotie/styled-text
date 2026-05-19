@@ -1,0 +1,8 @@
+{
+  "name": "styled-text",
+  "private": true,
+  "workspaces": [
+    "typescript",
+    "react"
+  ]
+}
