@@ -1,0 +1,38 @@
+name: Publish to Registries
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  # 1. Build and Test
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Setup Python
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: pip install -r python/requirements.txt && pytest python/
+
+      # Setup Node
+      - uses: actions/setup-node@v4
+        with: { node-version: "20", registry-url: "https://registry.npmjs.org/" }
+      - run: npm install && npm test --workspaces
+
+  # 2. Publish Python to PyPI
+  publish-python:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - run: |
+          pip install build twine
+          python -m build python/
+          twine upload python/dist/*
+        env:
+          TWINE_USERNAME: __token__
+          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
