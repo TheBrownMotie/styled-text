@@ -10,10 +10,14 @@ from text_styler import (
 )
 
 
-def test_styletext_none():
-    text_styler = TextStyler()
+def test_styletext_none1():
+    text_styler = TextStyler([])
     assert text_styler.process_text("this is normal") == "this is normal"
-    print(text_styler.recursive_calls)
+
+
+def test_styletext_none2():
+    text_styler = TextStyler([])
+    assert text_styler.process_text("this *is* normal") == "this *is* normal"
 
 
 def test_all_is_bold():
@@ -21,13 +25,11 @@ def test_all_is_bold():
         [TextStylerConfig(start="*", transform=html_tag("strong"))]
     )
     assert text_styler.process_text("*this is bold*") == "<strong>this is bold</strong>"
-    print(text_styler.recursive_calls)
 
 
 def test_all_is_italics():
     text_styler = TextStyler([TextStylerConfig(start="_", transform=html_tag("em"))])
     assert text_styler.process_text("_this is italics_") == "<em>this is italics</em>"
-    print(text_styler.recursive_calls)
 
 
 def test_some_is_bold():
@@ -38,7 +40,6 @@ def test_some_is_bold():
         text_styler.process_text("this *is bold* in the middle")
         == "this <strong>is bold</strong> in the middle"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_beginning_is_bold():
@@ -49,7 +50,6 @@ def test_beginning_is_bold():
         text_styler.process_text("*this is bold* at the start")
         == "<strong>this is bold</strong> at the start"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_ending_is_bold():
@@ -60,7 +60,6 @@ def test_ending_is_bold():
         text_styler.process_text("this is *bold at the end*")
         == "this is <strong>bold at the end</strong>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_italics_within_bold():
@@ -74,7 +73,6 @@ def test_italics_within_bold():
         text_styler.process_text("this *is _bold and italics_ which* is pretty cool")
         == "this <strong>is <em>bold and italics</em> which</strong> is pretty cool"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_bold_without_end():
@@ -85,7 +83,6 @@ def test_bold_without_end():
         text_styler.process_text("*this is bold that doesn't end")
         == "*this is bold that doesn't end"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_bold_at_end():
@@ -96,7 +93,6 @@ def test_bold_at_end():
         text_styler.process_text("this is bold that doesn't start*")
         == "this is bold that doesn't start*"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_italics_within_bold_within_italics():
@@ -112,7 +108,6 @@ def test_italics_within_bold_within_italics():
         )
         == "<em>this is <strong>bold and then <em>italics again</em> and</strong> it still</em> works"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_two_bolds_not_overlapping():
@@ -125,7 +120,6 @@ def test_two_bolds_not_overlapping():
         )
         == "<strong>this is </strong>bold and then bold again<strong> but it still works</strong>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_three_asterisks():
@@ -138,7 +132,6 @@ def test_three_asterisks():
         )
         == "<strong>this is bold and then bold again</strong> but doesn't close the second* bold"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_single_underscore_in_middle_of_bold():
@@ -154,7 +147,6 @@ def test_single_underscore_in_middle_of_bold():
         )
         == "this is <strong>bold with an underscore_ in the middle</strong> that doesn't end"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_overlapping_regions1():
@@ -170,7 +162,6 @@ def test_overlapping_regions1():
         )
         == "this is <strong>bold and now _an underscore</strong> that closes later_"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_overlapping_regions2():
@@ -186,7 +177,6 @@ def test_overlapping_regions2():
         )
         == "this is <em>bold and now *an underscore</em> that closes later*"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_strikethrough():
@@ -200,7 +190,6 @@ def test_strikethrough():
         text_styler.process_text("this is ~~bad~~ *great*!")
         == "this is <del>bad</del> <strong>great</strong>!"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_strikethrough_and_sub():
@@ -214,7 +203,6 @@ def test_strikethrough_and_sub():
         text_styler.process_text("this is ~~bad~~ ~okay~")
         == "this is <del>bad</del> <sub>okay</sub>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_strikethrough_within_sub():
@@ -228,7 +216,6 @@ def test_strikethrough_within_sub():
         text_styler.process_text("Water is H~ ~~3~~2~O")
         == "Water is H<sub> <del>3</del>2</sub>O"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_sub_within_strikethrough():
@@ -242,7 +229,6 @@ def test_sub_within_strikethrough():
         text_styler.process_text("Water is ~~H~3~O~~ H~2~O")
         == "Water is <del>H<sub>3</sub>O</del> H<sub>2</sub>O"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_triple_tilde_strikethrough_within_sub():
@@ -256,7 +242,6 @@ def test_triple_tilde_strikethrough_within_sub():
         text_styler.process_text("Water is H~~~3~~2~O")
         == "Water is H<sub><del>3</del>2</sub>O"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_triple_tilde_overall_sub_within_strikethrough():
@@ -270,7 +255,6 @@ def test_triple_tilde_overall_sub_within_strikethrough():
         text_styler.process_text("Small text: ~~~foo~bar~~")
         == "Small text: <del><sub>foo</sub>bar</del>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_different_start_and_end():
@@ -285,7 +269,6 @@ def test_different_start_and_end():
         text_styler.process_text("<!this is a spoiler!>")
         == "<span class='spoiler'>this is a spoiler</span>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_different_start_and_end_with_styling():
@@ -303,7 +286,6 @@ def test_different_start_and_end_with_styling():
         text_styler.process_text("<!this _is_ a ~~_quote_~~ *spoiler*!>")
         == "<span class='spoiler'>this <em>is</em> a <del><em>quote</em></del> <strong>spoiler</strong></span>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_start_and_end_inside_start_and_end():
@@ -320,7 +302,6 @@ def test_start_and_end_inside_start_and_end():
         )
         == "<span class='spoiler'>this is a spoiler <span class='spoiler'>within a spoiler</span>, which is weird</span>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_start_and_end_inside_start_and_end_disallow_direct():
@@ -341,7 +322,6 @@ def test_start_and_end_inside_start_and_end_disallow_direct():
         )
         == "<span class='spoiler'>this is a spoiler &lt;!within a spoiler!&gt;, which is <em>weird, but this is <span class='spoiler'>allowed</span></em></span>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_start_and_end_inside_start_and_end_disallow_ancestors():
@@ -362,7 +342,6 @@ def test_start_and_end_inside_start_and_end_disallow_ancestors():
         )
         == "<span class='spoiler'>this is a spoiler &lt;!within a spoiler!&gt;, which is <em>weird, and so is &lt;!this!&gt;</em></span>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_multiquote():
@@ -381,7 +360,6 @@ def test_multiquote():
         )
         == "<blockquote>this is a blockquote</blockquote><blockquote>this is *another</blockquote><blockquote>this is* a cool third one</blockquote>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_multiquote_preserving_start_marking():
@@ -401,7 +379,6 @@ def test_multiquote_preserving_start_marking():
         )
         == "<blockquote>&gt;this is a blockquote</blockquote><blockquote>&gt;this is *another</blockquote><blockquote>&gt;this is* a cool third one</blockquote>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_multiquote_preserving_all():
@@ -422,7 +399,6 @@ def test_multiquote_preserving_all():
         )
         == "<blockquote>&gt;this is a blockquote\n</blockquote><blockquote>&gt;this is *another\n</blockquote><blockquote>&gt;this is* a cool third one\n</blockquote>"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_keep_all_markings_outside():
@@ -461,7 +437,6 @@ def test_keep_all_markings_outside():
         )
         == "Lorem <strong>*ipsum*</strong> dolor sit <sub>~amet~</sub>, <em>_consectetur <del>~~adipiscing~~</del> <strong>*elit*</strong>_</em>. Nulla <em>_dapibus_</em>."
     )
-    print(text_styler.recursive_calls)
 
 
 def test_keep_all_markings_inside():
@@ -500,7 +475,6 @@ def test_keep_all_markings_inside():
         )
         == "Lorem *<strong>ipsum</strong>* dolor sit ~<sub>amet</sub>~, _<em>consectetur ~~<del>adipiscing</del>~~ *<strong>elit</strong>*</em>_. Nulla _<em>dapibus</em>_."
     )
-    print(text_styler.recursive_calls)
 
 
 def test_regex():
@@ -519,7 +493,6 @@ def test_regex():
         )
         == "This is an imageboard style <link id='12345'>&gt;&gt;12345</link> link"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_regex_wrapped_with_strong():
@@ -539,7 +512,6 @@ def test_regex_wrapped_with_strong():
         )
         == "This is an imageboard <strong>style <link id='12345'>&gt;&gt;12345</link> link</strong> that is bolded"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_regex_wrapped_with_strong_inside_it1():
@@ -559,7 +531,6 @@ def test_regex_wrapped_with_strong_inside_it1():
         )
         == "This is a regex unaffected <link id='12*3*45'>&gt;&gt;12*3*45</link> by <strong>asterisks</strong> inside it"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_regex_wrapped_with_strong_inside_it2():
@@ -579,7 +550,6 @@ def test_regex_wrapped_with_strong_inside_it2():
         )
         == "This is a regex <strong>broken by an asterisk &gt;&gt;12</strong>345 that came first"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_regex_wrapped_with_strong_inside_it3():
@@ -599,7 +569,6 @@ def test_regex_wrapped_with_strong_inside_it3():
         )
         == "This is a regex unbroken by an asterisk <link id='12*345'>&gt;&gt;12*345</link> that came* second"
     )
-    print(text_styler.recursive_calls)
 
 
 def test_regex_within_regex():
@@ -625,5 +594,3 @@ def test_regex_within_regex():
         )
         == "Here is a link <a href='https://www.google.com/anime/hello'>https://www.google.com/anime/hello</a> matching one regex within another"
     )
-
-    print(text_styler.recursive_calls)
