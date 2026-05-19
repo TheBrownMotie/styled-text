@@ -663,3 +663,25 @@ def test_escape_three_instances():
         text_styler.process_text(message)
         == "hello *wonderful<strong>beautiful</strong>"
     )
+
+
+def test_many_escapes1():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "hello \\\\*wonderful*beautiful*"
+    assert (
+        text_styler.process_text(message)
+        == "hello \\<strong>wonderful</strong>beautiful*"
+    )
+
+
+def test_many_escapes2():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "hello \\\\\\*wonderful*beautiful*"
+    assert (
+        text_styler.process_text(message)
+        == "hello \\*wonderful<strong>beautiful</strong>"
+    )

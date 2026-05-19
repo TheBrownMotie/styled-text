@@ -62,16 +62,6 @@ class TextStylerConfig:
         return (outer_prefix, inner_prefix, inner_suffix, outer_suffix)
 
 
-default_config: list[TextStylerConfig | TextStylerRegexConfig] = [
-    TextStylerConfig(start="~~", transform=html_tag("del")),
-    TextStylerConfig(start="~", transform=html_tag("sub")),
-    TextStylerConfig(start="*", transform=html_tag("strong")),
-    TextStylerConfig(start="_", transform=html_tag("em")),
-    TextStylerConfig(start="<!", transform=html_tag("spoiler"), end="!>"),
-    TextStylerConfig(start="&gt;", transform=html_tag("blockquote"), end="\n"),
-]
-
-
 @dataclass
 class TextAction:
     text: str
@@ -147,11 +137,7 @@ class TextStyler:
         self.min_skips = None
         if multiline:
             return self._process_text(text)
-
-        texts = re.findall(r".*?\n|.+", text)
-        texts = map(self._process_text, texts)
-        text = "".join(texts)
-        return text
+        return "".join(map(self._process_text, re.findall(r".*?\n|.+", text)))
 
     def _process_text(self, text: str) -> str:
         if text == "":
@@ -161,13 +147,11 @@ class TextStyler:
 
         # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
         # Then tie-break to the fewest blocks created
-        least_skips = min(map(lambda path: path.num_skips, paths))
-        winning_paths = [path for path in paths if path.num_skips == least_skips]
-        winner = sorted(winning_paths, key=lambda p: p.num_pushes)[0]
+        best_path = min(paths, key=lambda p: (p.num_skips, p.num_pushes))
 
         # Build the tree
         ast = SyntaxTree()
-        for action in winner.actions:
+        for action in best_path.actions:
             if isinstance(action, TextAction):
                 ast.push_str(action.text)
             elif isinstance(action, PushAction):
@@ -222,18 +206,19 @@ class TextStyler:
 
     def _find_next(self, text: str, start: int) -> list[NextStyle | NextRegex]:
         nexts: list[NextStyle | NextRegex] = []
+        escaped = False
         for index in range(start, len(text)):
             for marking in self.config:
                 if isinstance(marking, TextStylerRegexConfig):
                     if match := marking.regex.match(text, index):
                         nexts.append(NextRegex(marking, index, match))
-                else:
+                elif not escaped:
                     is_start = text.startswith(marking.get_start(), index)
                     is_end = text.startswith(marking.get_end(), index)
-                    escaped = text[index - 1] == "\\" if index > 0 else False
-                    if not escaped and (is_start or is_end):
+                    if is_start or is_end:
                         nexts.append(NextStyle(marking, index, is_start, is_end))
 
+            escaped = text[index] == "\\" and not escaped
             if len(nexts) > 0:
                 return nexts
         return []
@@ -244,8 +229,8 @@ class SyntaxTree:
         self.children: list[SyntaxTreeNode | str] = []
         self.curr: SyntaxTreeNode | None = None
 
-    def push(self, matched: TextStylerConfig, escaped: bool = False):
-        new_node = SyntaxTreeNode(self.curr, matched, escaped=escaped)
+    def push(self, matched: TextStylerConfig):
+        new_node = SyntaxTreeNode(self.curr, matched)
         self._push(new_node)
         self.curr = new_node
 
@@ -279,12 +264,10 @@ class SyntaxTreeNode:
         parent: SyntaxTreeNode | None,
         matched: TextStylerConfig | TextStylerRegexConfig,
         match: re.Match[str] | None = None,
-        escaped: bool = False,
     ):
         self.parent: SyntaxTreeNode | None = parent
         self.matched: TextStylerConfig | TextStylerRegexConfig = matched
         self.match: re.Match[str] | None = match
-        self.escaped: bool = escaped
 
         self.children: list[str | SyntaxTreeNode] = []
         self.path: tuple[TextStylerConfig, ...] = ()
@@ -298,7 +281,7 @@ class SyntaxTreeNode:
     def __str__(self):
         if isinstance(self.matched, TextStylerConfig):
             inner = "".join(map(str, self.children))
-            if self._should_print_raw() or self.escaped:
+            if self._should_print_raw():
                 return self.matched.get_start() + inner + self.matched.get_end()
 
             outer_prefix, inner_prefix, inner_suffix, outer_suffix = (
