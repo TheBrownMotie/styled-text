@@ -4,24 +4,24 @@ from text_styler import (
     InnerStyle,
     SyntaxTree,
     SyntaxTreeNode,
-    TextStylerConfig,
+    TextStylerRule,
     html_tag,
 )
 
 
 @pytest.fixture
-def em_config() -> TextStylerConfig:
-    return TextStylerConfig(start="_", transform=html_tag("em"))
+def em_config() -> TextStylerRule:
+    return TextStylerRule(start="_", transform=html_tag("em"))
 
 
 @pytest.fixture
-def strong_config() -> TextStylerConfig:
-    return TextStylerConfig(start="*", transform=html_tag("strong"))
+def strong_config() -> TextStylerRule:
+    return TextStylerRule(start="*", transform=html_tag("strong"))
 
 
 @pytest.fixture
-def spoiler_config() -> TextStylerConfig:
-    return TextStylerConfig(
+def spoiler_config() -> TextStylerRule:
+    return TextStylerRule(
         start="<!",
         transform=html_tag("span", {"class": "spoiler"}),
         end="!>",
@@ -29,13 +29,13 @@ def spoiler_config() -> TextStylerConfig:
     )
 
 
-def test_simple_ast(em_config: TextStylerConfig):
+def test_simple_ast(em_config: TextStylerRule):
     ast = SyntaxTree()
     ast.push_str("hello ")
     assert str(ast) == "hello "
 
     ast.push(em_config)
-    assert str(ast) == "hello <em></em>"
+    assert str(ast) == "hello <em />"
 
     ast.push_str("my")
     assert str(ast) == "hello <em>my</em>"
@@ -52,11 +52,11 @@ def test_simple_ast(em_config: TextStylerConfig):
     assert isinstance(ast.children[1], SyntaxTreeNode)
     assert ast.children[1].parent is None
     assert ast.children[1].children == ["my"]
-    assert ast.children[1].matched == em_config
+    assert ast.children[1].rule == em_config
     assert ast.children[1].match is None
 
 
-def test_simple_ast_copy(em_config: TextStylerConfig):
+def test_simple_ast_copy(em_config: TextStylerRule):
     ast = SyntaxTree()
     ast.push_str("hello ")
     ast.push(em_config)
@@ -70,17 +70,17 @@ def test_simple_ast_copy(em_config: TextStylerConfig):
     assert isinstance(ast.children[1], SyntaxTreeNode)
     assert ast.children[1].parent is None
     assert ast.children[1].children == ["my"]
-    assert ast.children[1].matched == em_config
+    assert ast.children[1].rule == em_config
     assert ast.children[1].match is None
 
 
-def test_simple_ast_copy_in_middle(em_config: TextStylerConfig):
+def test_simple_ast_copy_in_middle(em_config: TextStylerRule):
     ast = SyntaxTree()
     ast.push_str("hello ")
     ast.push(em_config)
     assert ast.curr is not None
     assert ast.curr.children == []
-    assert ast.curr.matched == em_config
+    assert ast.curr.rule == em_config
     ast.push_str("my")
     ast.pop()
     ast.push_str(" world")
@@ -91,21 +91,21 @@ def test_simple_ast_copy_in_middle(em_config: TextStylerConfig):
     assert isinstance(ast.children[1], SyntaxTreeNode)
     assert ast.children[1].parent is None
     assert ast.children[1].children == ["my"]
-    assert ast.children[1].matched == em_config
+    assert ast.children[1].rule == em_config
     assert ast.children[1].match is None
 
 
-def test_simple_ast_peek(em_config: TextStylerConfig):
+def test_simple_ast_peek(em_config: TextStylerRule):
     ast = SyntaxTree()
     ast.push_str("hello ")
     ast.push(em_config)
     ast.push_str("my")
-    assert isinstance(ast.curr, TextStylerConfig) and ast.curr.matched == em_config
+    assert ast.curr is not None and ast.curr.rule == em_config
     ast.pop()
     ast.push_str(" world")
 
 
-def test_more_complex_ast(em_config: TextStylerConfig, strong_config: TextStylerConfig):
+def test_more_complex_ast(em_config: TextStylerRule, strong_config: TextStylerRule):
     # this *is _bold and italics_ which* is pretty cool
     ast = SyntaxTree()
     ast.push_str("this ")
@@ -124,7 +124,7 @@ def test_more_complex_ast(em_config: TextStylerConfig, strong_config: TextStyler
     )
 
 
-def test_complex_ast(em_config: TextStylerConfig, spoiler_config: TextStylerConfig):
+def test_complex_ast(em_config: TextStylerRule, spoiler_config: TextStylerRule):
     ast = SyntaxTree()
     ast.push_str("")
     ast.push(spoiler_config)
