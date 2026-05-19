@@ -1,0 +1,18 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "declaration": true,
+    "declarationDir": "./dist",
+    "skipLibCheck": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "types": ["node", "react", "react-dom"],
+    "paths": {
+      "styled-text": ["../typescript/src/text_styler.ts"],
+    },
+  },
+  "include": ["."],
+}
