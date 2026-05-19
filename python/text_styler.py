@@ -1,10 +1,10 @@
 import html
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import StrEnum
 from re import Match, Pattern, sub
-from typing import Literal, NamedTuple, override
+from typing import NamedTuple, override
 
 
 class ConsumptionStyle(StrEnum):
@@ -197,8 +197,8 @@ class TextStyler:
 
         paths: list[Path] = []
         for next in nexts:
-            new_path = path.copy_and_push(TextAction(text[start : next.position]))
             new_start = next.position
+            new_path = path.copy_and_push(TextAction(text[start:new_start]))
 
             if isinstance(next, NextRegex):
                 new_start += len(next.match.group(0))
@@ -230,7 +230,8 @@ class TextStyler:
                 else:
                     is_start = text.startswith(marking.get_start(), index)
                     is_end = text.startswith(marking.get_end(), index)
-                    if is_start or is_end:
+                    escaped = text[index - 1] == "\\" if index > 0 else False
+                    if not escaped and (is_start or is_end):
                         nexts.append(NextStyle(marking, index, is_start, is_end))
 
             if len(nexts) > 0:
@@ -243,8 +244,8 @@ class SyntaxTree:
         self.children: list[SyntaxTreeNode | str] = []
         self.curr: SyntaxTreeNode | None = None
 
-    def push(self, matched: TextStylerConfig):
-        new_node = SyntaxTreeNode(self.curr, matched)
+    def push(self, matched: TextStylerConfig, escaped: bool = False):
+        new_node = SyntaxTreeNode(self.curr, matched, escaped=escaped)
         self._push(new_node)
         self.curr = new_node
 
@@ -254,7 +255,7 @@ class SyntaxTree:
 
     def push_str(self, text: str):
         if text:
-            self._push(text)
+            self._push(re.sub(r"\\(.)", r"\1", text))
 
     def _push(self, node: SyntaxTreeNode | str):
         if self.curr is None:
@@ -278,10 +279,12 @@ class SyntaxTreeNode:
         parent: SyntaxTreeNode | None,
         matched: TextStylerConfig | TextStylerRegexConfig,
         match: re.Match[str] | None = None,
+        escaped: bool = False,
     ):
         self.parent: SyntaxTreeNode | None = parent
         self.matched: TextStylerConfig | TextStylerRegexConfig = matched
         self.match: re.Match[str] | None = match
+        self.escaped: bool = escaped
 
         self.children: list[str | SyntaxTreeNode] = []
         self.path: tuple[TextStylerConfig, ...] = ()
@@ -295,7 +298,7 @@ class SyntaxTreeNode:
     def __str__(self):
         if isinstance(self.matched, TextStylerConfig):
             inner = "".join(map(str, self.children))
-            if self._should_print_raw():
+            if self._should_print_raw() or self.escaped:
                 return self.matched.get_start() + inner + self.matched.get_end()
 
             outer_prefix, inner_prefix, inner_suffix, outer_suffix = (

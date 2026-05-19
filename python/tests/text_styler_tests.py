@@ -12,12 +12,14 @@ from text_styler import (
 
 def test_styletext_none1():
     text_styler = TextStyler([])
-    assert text_styler.process_text("this is normal") == "this is normal"
+    message = "this is normal"
+    assert text_styler.process_text(message) == message
 
 
 def test_styletext_none2():
     text_styler = TextStyler([])
-    assert text_styler.process_text("this *is* normal") == "this *is* normal"
+    message = "this *is* normal"
+    assert text_styler.process_text(message) == message
 
 
 def test_all_is_bold():
@@ -593,4 +595,71 @@ def test_regex_within_regex():
             "Here is a link https://www.google.com/anime/hello matching one regex within another"
         )
         == "Here is a link <a href='https://www.google.com/anime/hello'>https://www.google.com/anime/hello</a> matching one regex within another"
+    )
+
+
+def test_big_message():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(
+                start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
+            ),
+            TextStylerRegexConfig(  # external link
+                regex=re.compile(r"https://\w+\.\w+.com(/\w+)*"),
+                replace=r"<a href='\g<0>'>\g<0></a>",
+            ),
+        ]
+    )
+
+    message = "This is a _bunch_ of *~~things~~stuff* all coming *together* to _produce~lmao~ a big message_. Check out https://www.google.com to find out _all_ the things you can do."
+    assert (
+        text_styler.process_text(message)
+        == "This is a <em>bunch</em> of <strong><del>things</del>stuff</strong> all coming <strong>together</strong> to <em>produce<sub>lmao</sub> a big message</em>. Check out <a href='https://www.google.com'>https://www.google.com</a> to find out <em>all</em> the things you can do."
+    )
+
+
+def test_big_message_some_escaped():
+    text_styler = TextStyler(
+        [
+            TextStylerConfig(start="*", transform=html_tag("strong")),
+            TextStylerConfig(start="_", transform=html_tag("em")),
+            TextStylerConfig(start="~~", transform=html_tag("del")),
+            TextStylerConfig(start="~", transform=html_tag("sub")),
+            TextStylerConfig(
+                start="<!", transform=html_tag("span", {"class": "spoiler"}), end="!>"
+            ),
+            TextStylerRegexConfig(  # external link
+                regex=re.compile(r"https://\w+\.\w+.com(/\w+)*"),
+                replace=r"<a href='\g<0>'>\g<0></a>",
+            ),
+        ]
+    )
+
+    message = "This is a _bunch_ of \\*~~things~~stuff\\* all coming *together* to _produce\\~lmao\\~ a big message_. Check out https://www.google.com to find out _all_ the things you can do."
+    assert (
+        text_styler.process_text(message)
+        == "This is a <em>bunch</em> of *<del>things</del>stuff* all coming <strong>together</strong> to <em>produce~lmao~ a big message</em>. Check out <a href='https://www.google.com'>https://www.google.com</a> to find out <em>all</em> the things you can do."
+    )
+
+
+def test_escape_one_instance():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "hello \\* wonderful"
+    assert text_styler.process_text(message) == "hello * wonderful"
+
+
+def test_escape_three_instances():
+    text_styler = TextStyler(
+        [TextStylerConfig(start="*", transform=html_tag("strong"))]
+    )
+    message = "hello \\*wonderful*beautiful*"
+    assert (
+        text_styler.process_text(message)
+        == "hello *wonderful<strong>beautiful</strong>"
     )
