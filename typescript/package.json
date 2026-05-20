@@ -1,7 +1,7 @@
 {
   "name": "styled-text",
   "version": "0.1.0",
-  "description": "Library to convert a text with custom markings and convert it to html (or something else).",
+  "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "license": "MIT",
   "readme": "README.md",
   "type": "module",
