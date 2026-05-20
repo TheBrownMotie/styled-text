@@ -42,17 +42,20 @@ html = styler.process_text(text)
 ## Examples
 
 #### Simple bold
+
 ```python
 TextStylerRule(
   start='*',
   transform=html_tag("strong")
 )
 ```
+
 Input: `My *bolded* text`<br>
 Output (raw): `My <strong>bolded</strong> text`<br>
 Output (visual): My <strong>bolded</strong> text<br>
 
 #### Nested bold/italic
+
 ```python
 TextStylerRule(
   start='*',
@@ -63,20 +66,23 @@ TextStylerRule(
   transform=html_tag("em")
 )
 ```
+
 Input: `My *bolded and _italicized_ text*`<br>
 Output (raw): `My <strong>bolded and <em>italicized</em> text</strong>`<br>
 Output (visual): My <strong>bolded and <em>italicized</em> text</strong><br>
 
 Input: `Three *asterisks* matches* eagerly`<br>
 Output (raw): `Three <strong>asterisks</strong> matches* eagerly`<br>
-Output (visual): Three <strong>asterisks</strong> matches* eagerly<br>
+Output (visual): Three <strong>asterisks</strong> matches\* eagerly<br>
 
 Input: `Overlapping * tags _ also * matches _ eagerly`<br>
 Output (raw): `Overlapping <strong> tags _ also </strong> matches _ eagerly`<br>
 Output (visual): Overlapping <strong> tags _ also </strong> matches _ eagerly<br>
 
 #### Nested / Conflicting Tags
+
 Here we show two things:
+
 1. `start` can be multiple characters (`~~` for strikethrough)
 2. one rule can be a subset of another, and it still works as expected (`~` for subscript)
 
@@ -90,11 +96,12 @@ TextStylerRule(
   transform=html_tag("del")
 )
 ```
-Input: `H\~\~\~3\~\~2\~O`<br>
+
+Input: `H~~~3~~2~O`<br>
 Output (raw): `H<sub><del>3</del>2</sub>O`<br>
 Output (visual): H<sub><del>3</del>2</sub>O<br>
 
-Input: `A \~\~\~[sic]\~tyop\~\~ typo is...`<br>
+Input: `A ~~~[sic]~tyop~~ typo is...`<br>
 Output (raw): `H<del><sub>[sic]<sub>tyop</del> typo is...`<br>
 Output (visual): H<del><sub>[sic]</sub>tyop</del> typo is...<br>
 
@@ -118,7 +125,7 @@ For example, even if we included the rule from asterisks to \<strong> that we've
 
 Input: `My link https://www.*google*.com`<br>
 Output (raw): `My link <a href='https://www.*google*.com'>https://www.*google*.com</a>`<br>
-Output (visual): My link <a href='https://www.*google*.com'>https://www.*google*.com</a><br>
+Output (visual): My link <a href='https://www.*google*.com'>https://www._google_.com</a><br>
 
 #### Preserving the special characters
 
@@ -146,6 +153,7 @@ Output (visual): My <strong>\*bolded\*</strong> text, my \_<em>italicized</em>\_
 #### Disallowing self-nesting
 
 By default, a rule nesting within itself is allowed, but this can be disabled in two ways:
+
 1. Completely disallowed, at any depth
 2. A direct parent-child is disallowed, but grandparent-grandchild (or more distant) is allowed
 
@@ -175,20 +183,20 @@ Input: `Superscript ^of multiple depths is ^disallowed^, *even if we ^wrap^ it i
 Output (raw): `Superscript <sup>of multiple depths is ^disallowed^, <strong>even if we ^wrap^ it in a bolded</strong> region</sup>`<br>
 Output (visual): Superscript <sup>of multiple depths is ^disallowed^, <strong>even if we ^wrap^ it in a bolded</strong> region</sup><br>
 
-
 ## Reference
+
 To use the library, just set up a list of "rules", create a `TextStyler` object, then call `process_text`.
 
-| Class / Function | Parameter | Type | Default | Description |
-| :--------------- | :-------- | :--- | :------ | :---------- |
-|TextStyler|rules|list|Required|A list of TextStylerRule or TextStylerRegexRule objects.|
-|TextStylerRegexRule|regex|str|Required|The regular expression pattern to match.
-||replace|str|Required|The replacement string (supports regex capture groups like \1).
-|TextStylerRule|start|str|Required|The marker string that begins the rule.
-||transform|Callable[str, str]|Required|"Function to process inner content (e.g., html_tag)."
-||end|str|start|The marker string that terminates the rule.
-||consume_start|ConsumptionType|REPLACE|"Determines if start is included in output (INSIDE, OUTSIDE, REPLACE)."
-||consume_end|ConsumptionType|REPLACE|"Determines if end is included in output (INSIDE, OUTSIDE, REPLACE)."
-||allow_inner|InnerStyle|ALLOW|"Determines if self-nesting is allowed (ALLOW, DISALLOW_DIRECT, DISALLOW_ANCESTOR)."
-|html_tag|name|str|Required|The HTML tag name (e.g., `"strong"`).|
-||attrs|dict|`{}`|Optional HTML attributes (e.g., `{"class": "my-css-class"}`).|
+| Class / Function    | Parameter     | Type               | Default  | Description                                                                          |
+| :------------------ | :------------ | :----------------- | :------- | :----------------------------------------------------------------------------------- |
+| TextStyler          | rules         | list               | Required | A list of TextStylerRule or TextStylerRegexRule objects.                             |
+| TextStylerRegexRule | regex         | str                | Required | The regular expression pattern to match.                                             |
+|                     | replace       | str                | Required | The replacement string (supports regex capture groups like \1).                      |
+| TextStylerRule      | start         | str                | Required | The marker string that begins the rule.                                              |
+|                     | transform     | Callable[str, str] | Required | "Function to process inner content (e.g., html_tag)."                                |
+|                     | end           | str                | start    | The marker string that terminates the rule.                                          |
+|                     | consume_start | ConsumptionType    | REPLACE  | "Determines if start is included in output (INSIDE, OUTSIDE, REPLACE)."              |
+|                     | consume_end   | ConsumptionType    | REPLACE  | "Determines if end is included in output (INSIDE, OUTSIDE, REPLACE)."                |
+|                     | allow_inner   | InnerStyle         | ALLOW    | "Determines if self-nesting is allowed (ALLOW, DISALLOW_DIRECT, DISALLOW_ANCESTOR)." |
+| html_tag            | name          | str                | Required | The HTML tag name (e.g., `"strong"`).                                                |
+|                     | attrs         | dict               | `{}`     | Optional HTML attributes (e.g., `{"class": "my-css-class"}`).                        |

@@ -91,11 +91,11 @@ Here we show two things:
 TextStylerRule("~", html_tag("sub"))
 TextStylerRule("~~", html_tag("del"))
 ```
-Input: `H\~\~\~3\~\~2\~O`<br>
+Input: `H~~~3~~2~O`<br>
 Output (raw): `H<sub><del>3</del>2</sub>O`<br>
 Output (visual): H<sub><del>3</del>2</sub>O<br>
 
-Input: `A \~\~\~[sic]\~tyop\~\~ typo is...`<br>
+Input: `A ~~~[sic]~tyop~~ typo is...`<br>
 Output (raw): `H<del><sub>[sic]<sub>tyop</del> typo is...`<br>
 Output (visual): H<del><sub>[sic]</sub>tyop</del> typo is...<br>
 
