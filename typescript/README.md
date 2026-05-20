@@ -150,7 +150,7 @@ Output (visual): Superscript <sup>of multiple depths is ^disallowed^, <strong>ev
 
 
 ## Reference
-To use the library, just set up a list of "rules", create a `TextStyler` object, then call `process_text`.
+To use the library, just set up a list of "rules", create a `TextStyler` object, then call `processText`.
 
 | Class / Function | Parameter | Type | Default | Description |
 | :--------------- | :-------- | :--- | :------ | :---------- |
