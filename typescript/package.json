@@ -2,6 +2,8 @@
   "name": "styled-text",
   "version": "0.1.0",
   "description": "Library to convert a text with custom markings and convert it to html (or something else).",
+  "license": "MIT",
+  "readme": "README.md",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",

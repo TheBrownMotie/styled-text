@@ -1,8 +1,12 @@
 [project]
-name = "text-styler"
+name = "styled-text"
 version = "0.1.0"
-description = "Library to convert a text with custom markings and convert it to html (or anything else)."
+description = "Library to convert a text with custom markings to html (or anything else)."
 readme = "README.md"
+license = "MIT"
+license-files = [
+    "LICENSE",
+]
 requires-python = ">=3.14"
 dependencies = []
 
