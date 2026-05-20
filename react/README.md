@@ -1,6 +1,6 @@
-# styled-text (Python version)
+# styled-text (React version)
 
-The Python version of the `styled-text` library. Designed for **custom markup transformations**.
+The Typescript version of the `styled-text` library. Designed for **custom markup transformations**.
 
 This library is for anyone who wants to create styled text **_like_** markdown, but with total **flexibility** to create their own rules.
 
@@ -10,58 +10,49 @@ This library is for anyone who wants to create styled text **_like_** markdown, 
 
 ## Usage
 
-```python
-import re
+```typescript
+import { StyledText, TextStylerRule, TextStylerRegexRule } from '@brownmotie/styled-text';
 
-from text_styler import TextStyler, TextStylerRegexRule, TextStylerRule, html_tag
+// Set up your rules (only need to do this once):
+const style_rules = [
+  new TextStylerRule("*", (text) => <strong>{text}</strong>),
+  new TextStylerRule("_", (text) => <em>{text}</em>),
+  new TextStylerRule("<~", (text) => <del>{text}</del>, { end: "~>" }),
+  new TextStylerRegexRule(
+    /(\d+\.\d+\.\d+)/,
+    (match) => <span style={{ color: 'red' }}>{match[1]}</span>
+  )
+];
 
-# Let's style this text:
-text = "_Welcome_ to _<~my library~>*styled-text*_ version 0.0.1"
+export default function App() {
+  // Let's style this text:
+  const text = "_Welcome_ to _<~my library~>*styled-text*_ version 0.0.1";
+  return (
+    <StyledText 
+      content={text} 
+      rules={style_rules} 
+    />
+  );
+}
 
-# Create the rules (only need to do this once)
-style_rules = [
-    TextStylerRule(start="*", transform=html_tag("strong")),
-    TextStylerRule(start="_", transform=html_tag("em")),
-    TextStylerRule(start="<~", transform=html_tag("del"), end="~>"),
-    TextStylerRegexRule(
-        regex=re.compile(r"(\d+\.\d+\.\d+)"),
-        replace=r"<span style='color: red'>\1</span>",
-    ),
-]
-
-# Create the styler:
-styler = TextStyler(style_rules)
-
-# Process text
-html = styler.process_text(text)
-
-# `html` looks like this now:
-# <em>Welcome</em> to <em><del>my library</del><strong>styled-text</strong></em> version <span style='color: red'>0.0.1</span>
+// In your DOM, you will see:
+// <em>Welcome</em> to <em><del>my library</del><strong>styled-text</strong></em> version <span style='color: red'>0.0.1</span>
 ```
 
 ## Examples
 
 #### Simple bold
-```python
-TextStylerRule(
-  start='*',
-  transform=html_tag("strong")
-)
+```typescript
+new TextStylerRule(*, htmlTag("strong"))
 ```
 Input: `My *bolded* text`<br>
 Output (raw): `My <strong>bolded</strong> text`<br>
 Output (visual): My <strong>bolded</strong> text<br>
 
 #### Nested bold/italic
-```python
-TextStylerRule(
-  start='*',
-  transform=html_tag("strong")
-),
-TextStylerRule(
-  start='_',
-  transform=html_tag("em")
-)
+```typescript
+TextStylerRule('*', html_tag("strong"))
+TextStylerRule('_', html_tag("em"))
 ```
 Input: `My *bolded and _italicized_ text*`<br>
 Output (raw): `My <strong>bolded and <em>italicized</em> text</strong>`<br>
@@ -80,15 +71,9 @@ Here we show two things:
 1. `start` can be multiple characters (`~~` for strikethrough)
 2. one rule can be a subset of another, and it still works as expected (`~` for subscript)
 
-```python
-TextStylerRule(
-  start="~",
-  transform=html_tag("sub")
-),
-TextStylerRule(
-  start="~~",
-  transform=html_tag("del")
-)
+```typescript
+TextStylerRule("~", html_tag("sub"))
+TextStylerRule("~~", html_tag("del"))
 ```
 Input: `H\~\~\~3\~\~2\~O`<br>
 Output (raw): `H<sub><del>3</del>2</sub>O`<br>
@@ -102,10 +87,10 @@ Output (visual): H<del><sub>[sic]</sub>tyop</del> typo is...<br>
 
 Regexes are the best way to built a complex replacement strategy, like if you need to parse the inner text into pieces, or use the inner text multiple times, such as in this example, where the matched url is used both as the property `href` and as the link text:
 
-```python
+```typescript
 TextStylerRegexRule(
-  regex=re.compile(r"https://www.[^\.]+.com),
-  replace=r"<a href='\\g<0>'>\\g<0></a>"
+  regex=/(https:\/\/www.[^\.]+.com)/,
+  replace=(match: RegExpMatchArray) => `<a href='${match[1]}'>${match[1]}</a>`
 )
 ```
 
@@ -124,19 +109,15 @@ Output (visual): My link <a href='https://www.*google*.com'>https://www.*google*
 
 By default, the special characters are removed from the output, but they can be preserved on the inside or on the outside:
 
-```python
-TextStylerRule(
-  start='*',
-  transform=html_tag("strong"),
-  consume_start=ConsumptionStyle.OUTSIDE,
-  consume_end=ConsumptionStyle.OUTSIDE,
-),
-TextStylerRule(
-  start='_',
-  transform=html_tag("em")
-  consume_start=ConsumptionStyle.INSIDE,
-  consume_end=ConsumptionStyle.INSIDE,
-)
+```typescript
+TextStylerRule('*', html_tag("strong"), {
+  consume_start: ConsumptionStyle.OUTSIDE,
+  consume_end: ConsumptionStyle.OUTSIDE
+})
+TextStylerRule('_', html_tag("em"), {
+  consume_start: ConsumptionStyle.INSIDE,
+  consume_end: ConsumptionStyle.INSIDE
+})
 ```
 
 Input: `My *bolded* text, my _italicized_ text`<br>
@@ -149,22 +130,16 @@ By default, a rule nesting within itself is allowed, but this can be disabled in
 1. Completely disallowed, at any depth
 2. A direct parent-child is disallowed, but grandparent-grandchild (or more distant) is allowed
 
-```python
-TextStylerRule(
-  start='*',
-  transform=html_tag("strong"),
-  allow_inner=InnerStyle.DISALLOW_DIRECT,
-),
-TextStylerRule(
-  start='^',
-  transform=html_tag("sup")
-  allow_inner=InnerStyle.DISALLOW_ANCESTOR,
-),
-TextStylerRule(
-  start='~',
-  transform=html_tag("sub")
-  allow_inner=InnerStyle.DISALLOW_DIRECT,
-)
+```typescript
+TextStylerRule('*', html_tag("strong"), {
+  allow_inner: InnerStyle.DISALLOW_DIRECT,
+})
+TextStylerRule('^', html_tag("sup"), {
+  allow_inner: InnerStyle.DISALLOW_ANCESTOR,
+})
+TextStylerRule('~', html_tag("sub"), {
+  allow_inner: InnerStyle.DISALLOW_DIRECT,
+})
 ```
 
 Input: `Subscript ~cannot exist ~directly~ within subscript, but *can exist ~within~ the bolded* region~`<br>
@@ -177,18 +152,18 @@ Output (visual): Superscript <sup>of multiple depths is ^disallowed^, <strong>ev
 
 
 ## Reference
-To use the library, just set up a list of "rules", create a `TextStyler` object, then call `process_text`.
+To use the library, just set up a list of "rules", create a `TextStyler` object, then call `processText`.
 
 | Class / Function | Parameter | Type | Default | Description |
 | :--------------- | :-------- | :--- | :------ | :---------- |
-|TextStyler|rules|list|Required|A list of TextStylerRule or TextStylerRegexRule objects.|
-|TextStylerRegexRule|regex|str|Required|The regular expression pattern to match.
-||replace|str|Required|The replacement string (supports regex capture groups like \1).
-|TextStylerRule|start|str|Required|The marker string that begins the rule.
-||transform|Callable[str, str]|Required|"Function to process inner content (e.g., html_tag)."
-||end|str|start|The marker string that terminates the rule.
+|TextStyler|rules|Array|Required|A list of TextStylerRule or TextStylerRegexRule objects.|
+|TextStylerRegexRule|regex|string|Required|The regular expression pattern to match.
+||replace|(match: RegExpMatchArray): string|Required|The replacement string (supports regex capture groups like \1).
+|TextStylerRule<T>|start|string|Required|The marker string that begins the rule.
+||transform|(children: (T | string)[]) => T|Required|"Function to process inner content (e.g., html_tag)."
+||end|string|start|The marker string that terminates the rule.
 ||consume_start|ConsumptionType|REPLACE|"Determines if start is included in output (INSIDE, OUTSIDE, REPLACE)."
 ||consume_end|ConsumptionType|REPLACE|"Determines if end is included in output (INSIDE, OUTSIDE, REPLACE)."
 ||allow_inner|InnerStyle|ALLOW|"Determines if self-nesting is allowed (ALLOW, DISALLOW_DIRECT, DISALLOW_ANCESTOR)."
-|html_tag|name|str|Required|The HTML tag name (e.g., `"strong"`).|
-||attrs|dict|`{}`|Optional HTML attributes (e.g., `{"class": "my-css-class"}`).|
+|html_tag|name|string|Required|The HTML tag name (e.g., `"strong"`).|
+||attrs|Record<string, string>|`{}`|Optional HTML attributes (e.g., `{"class": "my-css-class"}`).|
