@@ -20,7 +20,7 @@ jobs:
         working-directory: python
 
       - name: Run Python tests
-        run: uv run pytest
+        run: uv run pytest tests/*
         working-directory: python
 
   publish-python:
