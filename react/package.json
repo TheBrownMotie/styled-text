@@ -10,6 +10,9 @@
     "type": "git",
     "url": "https://github.com/TheBrownMotie/styled-text.git"
   },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "commonjs",
   "dependencies": {},
   "devDependencies": {
