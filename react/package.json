@@ -1,5 +1,5 @@
 {
-  "name": "@styled-text/react",
+  "name": "@brownmotie/styled-text-react",
   "version": "0.1.0",
   "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "main": "index.js",

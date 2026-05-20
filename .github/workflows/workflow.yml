@@ -48,23 +48,19 @@ jobs:
   publish-npm:
     needs: test
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: "20"
-          registry-url: "https://registry.npmjs.org/"
+          node-version: "24"
 
-      # This will now work because of the root package.json workspaces
       - run: npm install
 
-      # Publish the individual packages
-      - run: npm publish --access public
+      - run: npm publish --access public --provenance
         working-directory: typescript
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}
 
-      - run: npm publish --access public
-        working-directory: react
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}
+      # - run: npm publish --access public --provenance
+      #   working-directory: react
