@@ -30,7 +30,7 @@ This library, `styled-text`, allows you to build your own syntax rules with a si
 import { StyledText, TextStylerRule, TextStylerRegexRule } from '@brownmotie/styled-text';
 
 // Set up your rules (only need to do this once):
-const style_rules = [
+const styleRules = [
   new TextStylerRule("*", (text) => <strong>{text}</strong>),
   new TextStylerRule("_", (text) => <em>{text}</em>),
   new TextStylerRule("<~", (text) => <del>{text}</del>, { end: "~>" }),
@@ -46,7 +46,7 @@ export default function App() {
   return (
     <StyledText 
       content={text} 
-      rules={style_rules} 
+      rules={styleRules} 
     />
   );
 }

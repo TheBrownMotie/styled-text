@@ -17,10 +17,10 @@ import { TextStyler, TextStylerRule, TextStylerRegexRule, htmlTag} from "../src/
 const text = "_Welcome_ to _<~my library~>*styled-text*_ version 0.0.1";
 
 // Create the rules (only need to do this once)
-const style_rules = [
+const styleRules = [
   new TextStylerRule("*", htmlTag("strong")),
   new TextStylerRule("_", htmlTag("em")),
-  new TextStylerRule("<~", htmlTag("del"), end="~>"),
+  new TextStylerRule("<~", htmlTag("del"), {end: "~>"}),
   new TextStylerRegexRule(
     /(\d+\.\d+\.\d+)/,
     (match: RegExpMatchArray) => `<span style='color: red'>${match[1]}</span>`,
@@ -28,7 +28,7 @@ const style_rules = [
 ];
 
 // Create the styler:
-const styler = new TextStyler<string>(style_rules);
+const styler = new TextStyler<string>(styleRules);
 
 // Process text
 const html = styler.processText(text).join("");
