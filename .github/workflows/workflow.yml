@@ -14,14 +14,21 @@ jobs:
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-
       - name: Sync Python project
         run: uv sync --frozen
         working-directory: python
-
       - name: Run Python tests
         run: uv run pytest tests/*
         working-directory: python
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install and Test JS/TS
+        run: |
+          npm install
+          npm test --workspaces --if-present
 
   publish-python:
     needs: test
@@ -47,10 +54,17 @@ jobs:
         with:
           node-version: "20"
           registry-url: "https://registry.npmjs.org/"
+
+      # This will now work because of the root package.json workspaces
       - run: npm install
-      - run: npm publish typescript/ --access public
+
+      # Publish the individual packages
+      - run: npm publish --access public
+        working-directory: typescript
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}
-      - run: npm publish react/ --access public
+
+      - run: npm publish --access public
+        working-directory: react
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_API_TOKEN }}

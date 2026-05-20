@@ -1,6 +1,6 @@
 [project]
 name = "styled-text"
-version = "0.1.0"
+version = "0.1.1"
 description = "Flexible library to convert a text with custom markup to html (or anything else)."
 readme = "README.md"
 license = "MIT"
