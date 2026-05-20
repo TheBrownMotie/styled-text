@@ -3,10 +3,13 @@
   "version": "0.1.0",
   "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "main": "index.js",
-  "keywords": [],
-  "author": "",
+  "author": "brownmotie",
   "license": "MIT",
   "readme": "README.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheBrownMotie/styled-text.git"
+  },
   "type": "commonjs",
   "dependencies": {},
   "devDependencies": {
