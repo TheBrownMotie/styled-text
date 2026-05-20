@@ -1,6 +1,6 @@
 # styled-text (Python version)
 
-The Python engine for `styled-text`. Designed for high-speed regex processing and custom markup transformations.
+The Python engine for `styled-text`. Designed for custom markup transformations.
 
 ## Installation
 
@@ -9,19 +9,29 @@ The Python engine for `styled-text`. Designed for high-speed regex processing an
 ## Usage
 
 ```python
-from styled_text import TextStyler, TextStylerConfig, TextStylerRegexRule, html_tag
+import re
 
-styler = TextStyler([
-    TextStylerConfig(start="*", transform=html_tag("strong")),
-    TextStylerConfig(start="_", transform=html_tag("em")),
-    TextStylerConfig(start="<~", transform=html_tag("del"), end="~>"),
-    TextStylerRegexRule(regex=r"(\d+\.\d+\.\d+)", replace=r"<span style='color: red'>\1</span>")
-])
+from text_styler import TextStyler, TextStylerRegexRule, TextStylerRule, html_tag
+
+styler = TextStyler(
+    [
+        TextStylerRule(start="*", transform=html_tag("strong")),
+        TextStylerRule(start="_", transform=html_tag("em")),
+        TextStylerRule(start="<~", transform=html_tag("del"), end="~>"),
+        TextStylerRegexRule(
+            regex=re.compile(r"(\d+\.\d+\.\d+)"),
+            replace=r"<span style='color: red'>\1</span>",
+        ),
+    ]
+)
 
 # Process text
-html = styler.process_text("_Welcome_ to _<~my library~>*styled-text*_ version 1.0.0")
+html = styler.process_text(
+    "_Welcome_ to _<~my library~>*styled-text*_ version 0.0.1"
+)
 print(html)
-# <em>Welcome</em> to <em><del>my library</del><strong>styled-text</strong> version <span style='color: red'>1.0.0</span>
+# Prints:
+# <em>Welcome</em> to <em><del>my library</del><strong>styled-text</strong></em> version <span style='color: red'>0.0.1</span>
 ```
 
 ## Examples
