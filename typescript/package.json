@@ -1,9 +1,8 @@
 {
   "name": "@brownmotie/styled-text",
-  "version": "1.0.0",
+  "version": "1.0.5",
   "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "author": "brownmotie",
-
   "license": "MIT",
   "readme": "README.md",
   "type": "module",
@@ -19,15 +18,16 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/index.cjs"
     }
   },
   "files": [
     "dist"
   ],
   "devDependencies": {
+    "tsup": "^8.5.1",
     "vitest": "^4.1.6"
   },
   "scripts": {
