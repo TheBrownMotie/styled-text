@@ -62,5 +62,5 @@ jobs:
       - run: npm publish --access public --provenance
         working-directory: typescript
 
-      # - run: npm publish --access public --provenance
-      #   working-directory: react
+      - run: npm publish --access public --provenance
+        working-directory: react

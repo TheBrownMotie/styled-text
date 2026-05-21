@@ -1,5 +1,5 @@
 import React, { useMemo } from "react";
-import { TextStyler, RuleType } from "styled-text";
+import { TextStyler, RuleType } from "@brownmotie/styled-text";
 
 interface Props {
   text: string;

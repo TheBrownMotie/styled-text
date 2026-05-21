@@ -14,7 +14,9 @@
     "access": "public"
   },
   "type": "commonjs",
-  "dependencies": {},
+  "dependencies": {
+    "@brownmotie/styled-text": "^1.0.2"
+  },
   "devDependencies": {
     "@types/node": "^25.9.0",
     "@types/react": "^19.2.14",
