@@ -43,19 +43,22 @@ export class TextStylerRegexRule<T> {
 }
 
 export class TextStylerRule<T> {
-  public start: string;
+  public start: string | RegExp;
   public transform: (children: (T | string)[]) => T;
-  public end: string | null;
+  public end: string | RegExp | null;
   public wrap_consecutive: ((children: (T | string)[]) => T) | null;
   public consume_start: ConsumptionStyle;
   public consume_end: ConsumptionStyle;
   public allow_inner: InnerStyle;
 
+  private _startRegex: RegExp | null = null;
+  private _endRegex: RegExp | null = null;
+
   constructor(
-    start: string,
+    start: string | RegExp,
     transform: (children: (T | string)[]) => T,
     options?: {
-      end?: string | null;
+      end?: string | RegExp | null;
       wrap_consecutive?: (children: (T | string)[]) => T;
       consume_start?: ConsumptionStyle;
       consume_end?: ConsumptionStyle;
@@ -69,37 +72,50 @@ export class TextStylerRule<T> {
     this.consume_start = options?.consume_start ?? ConsumptionStyle.REPLACE;
     this.consume_end = options?.consume_end ?? ConsumptionStyle.REPLACE;
     this.allow_inner = options?.allow_inner ?? InnerStyle.ALLOW;
+
+    if (this.start instanceof RegExp) {
+      this._startRegex = new RegExp(this.start.source, this.start.flags.includes("g") ? this.start.flags : this.start.flags + "g");
+    }
+    if (this.end instanceof RegExp) {
+      this._endRegex = new RegExp(this.end.source, this.end.flags.includes("g") ? this.end.flags : this.end.flags + "g");
+    }
+  }
+
+  get_start_match(text: string, pos: number): string | null {
+      if (typeof this.start === "string") {
+        const startStr = this.get_start();
+        return text.startsWith(startStr, pos) ? startStr : null;
+      }
+      if (this._startRegex) {
+        this._startRegex.lastIndex = pos;
+        const match = this._startRegex.exec(text);
+        return match && match.index === pos ? match[0] : null;
+      }
+      return null;
+    }
+
+    get_end_match(text: string, pos: number): string | null {
+      const end = this.end !== null ? this.end : this.start;
+      if (typeof end === "string") {
+        const endStr = htmlEscape(end);
+        return text.startsWith(endStr, pos) ? endStr : null;
+      }
+      const regex = this.end !== null ? this._endRegex : this._startRegex;
+      if (regex) {
+        regex.lastIndex = pos;
+        const match = regex.exec(text);
+        return match && match.index === pos ? match[0] : null;
+      }
+      return null;
+    }
+
+  get_start(): string {
+    return typeof this.start === "string" ? htmlEscape(this.start) : "";
   }
 
   get_end(): string {
-    return htmlEscape(this.end || this.start);
-  }
-
-  get_start(): string {
-    return htmlEscape(this.start);
-  }
-
-  get_wrappers(): [string, string, string, string] {
-    let outer_prefix = "",
-      inner_prefix = "",
-      inner_suffix = "",
-      outer_suffix = "";
-
-    if (this.consume_start === ConsumptionStyle.INSIDE) {
-      outer_prefix = this.get_end();
-    }
-    if (this.consume_start === ConsumptionStyle.OUTSIDE) {
-      inner_prefix = this.get_start();
-    }
-
-    if (this.consume_end === ConsumptionStyle.INSIDE) {
-      outer_suffix = this.get_end();
-    }
-    if (this.consume_end === ConsumptionStyle.OUTSIDE) {
-      inner_suffix = this.get_end();
-    }
-
-    return [outer_prefix, inner_prefix, inner_suffix, outer_suffix];
+    const end = this.end !== null ? this.end : this.start;
+    return typeof end === "string" ? htmlEscape(end) : "";
   }
 }
 
@@ -107,12 +123,12 @@ export type RuleType<T> = TextStylerRule<T> | TextStylerRegexRule<T>;
 
 export type Action<T> =
   | { type: "TEXT"; text: string }
-  | { type: "PUSH"; rule: TextStylerRule<T> }
-  | { type: "POP" }
+  | { type: "PUSH"; rule: TextStylerRule<T>; matched: string }
+  | { type: "POP"; matched: string }
   | { type: "REGEX"; rule: TextStylerRegexRule<T>; match: RegExpMatchArray };
 
 type NextMatch<T> =
-  | { type: "STYLE"; rule: TextStylerRule<T>; position: number; is_start: boolean; is_end: boolean }
+  | { type: "STYLE"; rule: TextStylerRule<T>; position: number; is_start: boolean; is_end: boolean; matched: string }
   | { type: "REGEX"; rule: TextStylerRegexRule<T>; position: number; match: RegExpMatchArray };
 
 export class Path<T> {
@@ -157,9 +173,12 @@ export class TextStyler<T> {
 
   public processText(text: string, multiline: boolean = false): (T | string)[] {
     this.min_skips = null;
-    const normalizedText = text.endsWith("\n") ? text : text + "\n";
+    const needs_cleanup = !text.endsWith("\n");
+    const normalizedText = needs_cleanup ? text + "\n" : text;
+
     const result = this._process_text(normalizedText, multiline);
-    if (!text.endsWith("\n") && result.length > 0) {
+
+    if (needs_cleanup && result.length > 0) {
         const last = result[result.length - 1];
         if (typeof last === "string") {
             result[result.length - 1] = last.replace(/\n$/, "");
@@ -178,12 +197,8 @@ export class TextStyler<T> {
 
     // Tie-break: lowest skips first, then fewest pushes
     const best_path = paths.reduce((best, curr) => {
-      if (curr.num_skips < best.num_skips) {
-        return curr;
-      }
-      if (curr.num_skips > best.num_skips) {
-        return best;
-      }
+      if (curr.num_skips < best.num_skips) return curr;
+      if (curr.num_skips > best.num_skips) return best;
       return curr.num_pushes < best.num_pushes ? curr : best;
     });
 
@@ -192,9 +207,9 @@ export class TextStyler<T> {
       if (action.type === "TEXT") {
         ast.push_str(action.text);
       } else if (action.type === "PUSH") {
-        ast.push(action.rule);
+        ast.push(action.rule, action.matched);
       } else if (action.type === "POP") {
-        ast.pop();
+        ast.pop(action.matched);
       } else if (action.type === "REGEX") {
         ast.push_regex(action.rule, action.match);
       }
@@ -233,11 +248,12 @@ export class TextStyler<T> {
         new_start += next.match[0].length;
         new_path = new_path.copy_and_push({ type: "REGEX", rule: next.rule, match: next.match });
       } else {
-        new_start += next.is_start ? next.rule.get_start().length : next.rule.get_end().length;
+        new_start += next.matched.length;
         if (next.is_end && path.stack.length > 0 && path.peek() === next.rule) {
-          new_path = new_path.copy_and_push({ type: "POP" });
+          new_path = new_path.copy_and_push({ type: "POP", matched: next.matched });
         } else if (next.is_start) {
-          new_path = new_path.copy_and_push({ type: "PUSH", rule: next.rule });
+          if (next.matched.length === 0) continue; // Prevent infinite loops from 0-length regexes
+          new_path = new_path.copy_and_push({ type: "PUSH", rule: next.rule, matched: next.matched });
         } else {
           continue;
         }
@@ -251,7 +267,13 @@ export class TextStyler<T> {
     if (!multiline && path.stack.length > 0 && text_part.includes("\n")) {
       return paths;
     }
-    const new_path = path.copy_and_push({ type: "TEXT", text: text_part }, 1);
+
+    // Do not penalize if we skipped a 0-length match boundary (like end of line / lookarounds)
+    let penalty = 1;
+    const allZero = nexts.every(n => n.type === "REGEX" ? n.match[0].length === 0 : n.matched.length === 0);
+    if (allZero) penalty = 0;
+
+    const new_path = path.copy_and_push({ type: "TEXT", text: text_part }, penalty);
     paths.push(...this._helper(text, new_start, new_path, multiline));
 
     return paths;
@@ -269,10 +291,19 @@ export class TextStyler<T> {
             nexts.push({ type: "REGEX", rule: marking, position: index, match });
           }
         } else if (!is_escaped) {
-          const is_start = text.startsWith(marking.get_start(), index);
-          const is_end = text.startsWith(marking.get_end(), index);
-          if (is_start || is_end) {
-            nexts.push({ type: "STYLE", rule: marking, position: index, is_start, is_end });
+          const startMatch = marking.get_start_match(text, index);
+          const endMatch = marking.get_end_match(text, index);
+
+          if (startMatch !== null || endMatch !== null) {
+            const matched = startMatch !== null ? startMatch : (endMatch || "");
+            nexts.push({
+              type: "STYLE",
+              rule: marking,
+              position: index,
+              is_start: startMatch !== null,
+              is_end: endMatch !== null,
+              matched,
+            });
           }
         }
       }
@@ -308,11 +339,17 @@ function groupBy<T>(children: (string | SyntaxTreeNode<T>)[]): Group<T>[] {
 }
 
 export class SyntaxTree<T> {
-  public children: (SyntaxTreeNode<T> | string)[] = [];
-  public curr: SyntaxTreeNode<T> | null = null;
+  public root: SyntaxTreeNode<T>;
+  public curr: SyntaxTreeNode<T>;
 
-  push(rule: TextStylerRule<T>) {
-    const new_node = new SyntaxTreeNode<T>(this.curr, rule);
+  constructor() {
+    const dummyRule = new TextStylerRule<T>("", (c) => c as unknown as T);
+    this.root = new SyntaxTreeNode<T>(null, dummyRule, null, "");
+    this.curr = this.root;
+  }
+
+  push(rule: TextStylerRule<T>, matched: string) {
+    const new_node = new SyntaxTreeNode<T>(this.curr, rule, null, matched);
     this._push(new_node);
     this.curr = new_node;
   }
@@ -329,44 +366,32 @@ export class SyntaxTree<T> {
   }
 
   private _push(node: SyntaxTreeNode<T> | string) {
-    if (this.curr === null) {
-      this.children.push(node);
-    } else {
-      this.curr.push(node);
-    }
+    this.curr.push(node);
   }
 
-  pop() {
-    if (this.curr === null) {
+  pop(matched: string) {
+    if (this.curr === this.root || this.curr.parent === null) {
       throw new Error("Attempted to pop() when already at root");
     }
+    this.curr.end_match = matched;
     this.curr = this.curr.parent;
   }
 
   render(): (T | string)[] {
-    const result: (T | string)[] = [];
-    for (const group of groupBy(this.children)) {
-      const renderedItems = group.items.flatMap(child =>
-        typeof child === "string" ? [child] : child.render()
-      );
-      if (group.rule && group.rule.wrap_consecutive) {
-        result.push(group.rule.wrap_consecutive(renderedItems));
-      } else {
-        result.push(...renderedItems);
-      }
-    }
-    return result;
+    return this.root.render();
   }
 }
 
 export class SyntaxTreeNode<T> {
   public children: (string | SyntaxTreeNode<T>)[] = [];
   public path: TextStylerRule<T>[] = [];
+  public end_match: string = "";
 
   constructor(
     public parent: SyntaxTreeNode<T> | null,
     public rule: RuleType<T>,
     public match: RegExpMatchArray | null = null,
+    public start_match: string = "",
   ) {
     if (parent !== null && parent.rule instanceof TextStylerRule) {
       this.path = [...parent.path, parent.rule];
@@ -380,19 +405,51 @@ export class SyntaxTreeNode<T> {
   render(): (T | string)[] {
     if (this.rule instanceof TextStylerRule) {
       const rule = this.rule;
-      const inner: (T | string)[] = this.children.flatMap((c) => typeof c == "string" ? c : c.render());
+      const inner: (T | string)[] = [];
 
-      if (this._should_print_raw()) {
-        return [rule.get_start(), ...inner, rule.get_end()];
+      for (const group of groupBy(this.children)) {
+        const renderedItems = group.items.flatMap(child =>
+          typeof child === "string" ? [child] : child.render()
+        );
+        if (group.rule && group.rule.wrap_consecutive) {
+          inner.push(group.rule.wrap_consecutive(renderedItems));
+        } else {
+          inner.push(...renderedItems);
+        }
       }
 
-      const [outer_prefix, inner_prefix, inner_suffix, outer_suffix] = rule.get_wrappers();
+      if (this.parent === null) {
+        return inner; // Root simply surfaces the children
+      }
 
-      const wrappedInner = [...(inner_prefix ? [inner_prefix] : []), ...inner, ...(inner_suffix ? [inner_suffix] : [])];
+      if (this._should_print_raw()) {
+        const rawResult: (T | string)[] = [];
+        if (this.start_match) rawResult.push(this.start_match);
+        rawResult.push(...inner);
+        if (this.end_match) rawResult.push(this.end_match);
+        return rawResult;
+      }
+
+      let outer_prefix = "", inner_prefix = "", inner_suffix = "", outer_suffix = "";
+      if (rule.consume_start === ConsumptionStyle.INSIDE) outer_prefix = this.start_match;
+      else if (rule.consume_start === ConsumptionStyle.OUTSIDE) inner_prefix = this.start_match;
+
+      if (rule.consume_end === ConsumptionStyle.INSIDE) outer_suffix = this.end_match;
+      else if (rule.consume_end === ConsumptionStyle.OUTSIDE) inner_suffix = this.end_match;
+
+      const wrappedInner = [
+        ...(inner_prefix ? [inner_prefix] : []),
+        ...inner,
+        ...(inner_suffix ? [inner_suffix] : [])
+      ];
 
       const result = rule.transform(wrappedInner);
 
-      return [...(outer_prefix ? [outer_prefix] : []), result, ...(outer_suffix ? [outer_suffix] : [])];
+      return [
+        ...(outer_prefix ? [outer_prefix] : []),
+        result,
+        ...(outer_suffix ? [outer_suffix] : [])
+      ];
     } else if (this.rule instanceof TextStylerRegexRule) {
       return [this.rule.transform(this.match!)];
     }
@@ -404,16 +461,17 @@ export class SyntaxTreeNode<T> {
       return false;
     }
 
-    const rule = this.rule;
+    const rule = this.rule as TextStylerRule<T>;
     const allow_inner = rule.allow_inner;
+
     if (allow_inner === InnerStyle.ALLOW || this.parent === null) {
       return false;
     }
     if (allow_inner === InnerStyle.DISALLOW_DIRECT) {
-      return this.parent.rule === this.rule;
+      return this.parent.rule === rule;
     }
     if (allow_inner === InnerStyle.DISALLOW_ANCESTOR) {
-      return this.path.includes(this.rule);
+      return this.path.includes(rule);
     }
 
     return false;

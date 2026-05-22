@@ -614,3 +614,112 @@ test("test_wrap_complex", () => {
       "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li></ul>\n<blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
     );
 });
+
+test('test_regex_symmetric_character_classes', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(/\d{3}/, htmlTag('strong'))
+  ]);
+  expect(textStyler.processText("abc 123hello123 xyz").join('')).toBe(
+    "abc <strong>hello</strong> xyz"
+  );
+});
+
+test('test_regex_asymmetric_tags', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /\[[A-Z]+\]/,
+      htmlTag('em'),
+      { end: /\[\/[A-Z]+\]/ }
+    )
+  ]);
+  // Note: The logic will match the regexes provided
+  expect(textStyler.processText("a [TAG]b[/BAZ] c [OTHER]d[/NOT]").join('')).toBe(
+    "a <em>b</em> c <em>d</em>"
+  );
+});
+
+test('test_regex_wrap_consecutive', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /^\s*-\s+/m,
+      htmlTag('li'),
+      { end: "\n", wrap_consecutive: htmlTag('ul') }
+    )
+  ]);
+  const message = " - first\n    - second\n";
+  expect(textStyler.processText(message).join('')).toBe(
+    "<ul><li>first</li><li>second</li></ul>"
+  );
+});
+
+test('test_regex_escaped_html_interaction', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /&lt;[a-z]+&gt;/,
+      htmlTag('div'),
+      { end: /&lt;\/[a-z]+&gt;/ }
+    )
+  ]);
+  expect(textStyler.processText("<test>hello</test>").join('')).toBe(
+    "<div>hello</div>"
+  );
+});
+
+test('test_regex_anchors_and_multiline', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /^&gt;&gt;&gt; /m,
+      htmlTag('blockquote'),
+      { end: /$/m }
+    )
+  ]);
+  const message = "normal line\n>>> quoted line\n >>>another normal";
+  // Note: The space before ">>>another normal" is preserved based on your python test case
+  expect(textStyler.processText(message).join('')).toBe(
+    "normal line\n<blockquote>quoted line</blockquote>\n &gt;&gt;&gt;another normal"
+  );
+});
+
+test('test_regex_consume_styles', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /\{+/,
+      htmlTag('code'),
+      {
+          end: /}+/,
+          consume_start: ConsumptionStyle.OUTSIDE,
+          consume_end: ConsumptionStyle.OUTSIDE
+      }
+    )
+  ]);
+  expect(textStyler.processText("var {{test}}").join('')).toBe(
+    "var <code>{{test}}</code>"
+  );
+});
+
+test('test_regex_disallow_direct', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /\[del\]/,
+      htmlTag('del'),
+      { end: /\[\/del\]/, allow_inner: InnerStyle.DISALLOW_DIRECT }
+    )
+  ]);
+  expect(textStyler.processText("[del]strike [del]nested[/del] out[/del]").join('')).toBe(
+    "<del>strike [del]nested[/del] out</del>"
+  );
+});
+
+test('test_regex_disallow_ancestors', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /\[strong\]/,
+      htmlTag('strong'),
+      { end: /\[\/strong\]/, allow_inner: InnerStyle.DISALLOW_ANCESTOR }
+    ),
+    new TextStylerRule("_", htmlTag('em'))
+  ]);
+  expect(textStyler.processText("[strong]bold _italic [strong]ignored[/strong] italic_ bold[/strong]").join('')).toBe(
+    "<strong>bold <em>italic [strong]ignored[/strong] italic</em> bold</strong>"
+  );
+});
