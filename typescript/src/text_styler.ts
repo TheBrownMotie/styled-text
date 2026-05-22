@@ -46,6 +46,7 @@ export class TextStylerRule<T> {
   public start: string;
   public transform: (children: (T | string)[]) => T;
   public end: string | null;
+  public wrap_consecutive: ((children: (T | string)[]) => T) | null;
   public consume_start: ConsumptionStyle;
   public consume_end: ConsumptionStyle;
   public allow_inner: InnerStyle;
@@ -55,6 +56,7 @@ export class TextStylerRule<T> {
     transform: (children: (T | string)[]) => T,
     options?: {
       end?: string | null;
+      wrap_consecutive?: (children: (T | string)[]) => T;
       consume_start?: ConsumptionStyle;
       consume_end?: ConsumptionStyle;
       allow_inner?: InnerStyle;
@@ -63,6 +65,7 @@ export class TextStylerRule<T> {
     this.start = start;
     this.transform = transform;
     this.end = options?.end ?? null;
+    this.wrap_consecutive = options?.wrap_consecutive ?? null;
     this.consume_start = options?.consume_start ?? ConsumptionStyle.REPLACE;
     this.consume_end = options?.consume_end ?? ConsumptionStyle.REPLACE;
     this.allow_inner = options?.allow_inner ?? InnerStyle.ALLOW;
@@ -154,21 +157,24 @@ export class TextStyler<T> {
 
   public processText(text: string, multiline: boolean = false): (T | string)[] {
     this.min_skips = null;
-    if (multiline) {
-      return this._process_text(text);
+    const normalizedText = text.endsWith("\n") ? text : text + "\n";
+    const result = this._process_text(normalizedText, multiline);
+    if (!text.endsWith("\n") && result.length > 0) {
+        const last = result[result.length - 1];
+        if (typeof last === "string") {
+            result[result.length - 1] = last.replace(/\n$/, "");
+        }
     }
-
-    const texts = text.match(/.*?\n|.+/g) || [];
-    return texts.flatMap((t) => this._process_text(t));
+    return result;
   }
 
-  private _process_text(text: string): (T | string)[] {
+  private _process_text(text: string, multiline: boolean = false): (T | string)[] {
     if (text === "") {
       return [];
     }
     text = htmlEscape(text);
 
-    const paths = this._helper(text, 0, new Path<T>());
+    const paths = this._helper(text, 0, new Path<T>(), multiline);
 
     // Tie-break: lowest skips first, then fewest pushes
     const best_path = paths.reduce((best, curr) => {
@@ -196,7 +202,7 @@ export class TextStyler<T> {
     return ast.render();
   }
 
-  private _helper(text: string, start: number, path: Path<T>): Path<T>[] {
+  private _helper(text: string, start: number, path: Path<T>, multiline: boolean = false): Path<T>[] {
     if (this.min_skips !== null && path.num_skips > this.min_skips) {
       return [];
     }
@@ -217,7 +223,11 @@ export class TextStyler<T> {
     const paths: Path<T>[] = [];
     for (const next of nexts) {
       let new_start = next.position;
-      let new_path = path.copy_and_push({ type: "TEXT", text: text.slice(start, new_start) });
+      let text_part = text.slice(start, new_start);
+      if (!multiline && path.stack.length > 0 && text_part.includes("\n")) {
+        continue;
+      }
+      let new_path = path.copy_and_push({ type: "TEXT", text: text_part });
 
       if (next.type === "REGEX") {
         new_start += next.match[0].length;
@@ -228,15 +238,21 @@ export class TextStyler<T> {
           new_path = new_path.copy_and_push({ type: "POP" });
         } else if (next.is_start) {
           new_path = new_path.copy_and_push({ type: "PUSH", rule: next.rule });
+        } else {
+          continue;
         }
       }
-      paths.push(...this._helper(text, new_start, new_path));
+      paths.push(...this._helper(text, new_start, new_path, multiline));
     }
 
     // Fallback branch
     const new_start = nexts[nexts.length - 1].position + 1;
-    const new_path = path.copy_and_push({ type: "TEXT", text: text.slice(start, new_start) }, 1);
-    paths.push(...this._helper(text, new_start, new_path));
+    const text_part = text.slice(start, new_start);
+    if (!multiline && path.stack.length > 0 && text_part.includes("\n")) {
+      return paths;
+    }
+    const new_path = path.copy_and_push({ type: "TEXT", text: text_part }, 1);
+    paths.push(...this._helper(text, new_start, new_path, multiline));
 
     return paths;
   }
@@ -268,6 +284,27 @@ export class TextStyler<T> {
     }
     return [];
   }
+}
+
+type Group<T> = { rule: TextStylerRule<T> | null, items: (string | SyntaxTreeNode<T>)[] };
+
+function groupBy<T>(children: (string | SyntaxTreeNode<T>)[]): Group<T>[] {
+  const groupedChildren: Group<T>[] = [];
+
+  for (const child of children) {
+    const rule = child instanceof SyntaxTreeNode && child.rule instanceof TextStylerRule ? child.rule : null;
+    if (groupedChildren.length === 0) {
+      groupedChildren.push({ rule, items: [child] });
+    } else {
+      const lastGroup = groupedChildren[groupedChildren.length - 1];
+      if (lastGroup.rule === rule) {
+        lastGroup.items.push(child);
+      } else {
+        groupedChildren.push({ rule, items: [child] });
+      }
+    }
+  }
+  return groupedChildren;
 }
 
 export class SyntaxTree<T> {
@@ -307,7 +344,18 @@ export class SyntaxTree<T> {
   }
 
   render(): (T | string)[] {
-    return this.children.flatMap((child) => (typeof child === "string" ? [child] : child.render()));
+    const result: (T | string)[] = [];
+    for (const group of groupBy(this.children)) {
+      const renderedItems = group.items.flatMap(child =>
+        typeof child === "string" ? [child] : child.render()
+      );
+      if (group.rule && group.rule.wrap_consecutive) {
+        result.push(group.rule.wrap_consecutive(renderedItems));
+      } else {
+        result.push(...renderedItems);
+      }
+    }
+    return result;
   }
 }
 
@@ -332,9 +380,7 @@ export class SyntaxTreeNode<T> {
   render(): (T | string)[] {
     if (this.rule instanceof TextStylerRule) {
       const rule = this.rule;
-      const inner: (T | string)[] = this.children.flatMap((child) =>
-        typeof child === "string" ? [child] : child.render(),
-      );
+      const inner: (T | string)[] = this.children.flatMap((c) => typeof c == "string" ? c : c.render());
 
       if (this._should_print_raw()) {
         return [rule.get_start(), ...inner, rule.get_end()];

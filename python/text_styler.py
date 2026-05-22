@@ -3,6 +3,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from itertools import groupby
 from re import Match, Pattern, sub
 from typing import NamedTuple, override
 
@@ -40,6 +41,7 @@ class TextStylerRule:
     start: str
     transform: Callable[[str], str]
     end: str | None = None
+    wrap_consecutive: Callable[[str], str] | None = None
 
     consume_start: ConsumptionStyle = ConsumptionStyle.REPLACE
     consume_end: ConsumptionStyle = ConsumptionStyle.REPLACE
@@ -136,17 +138,15 @@ class TextStyler:
         self.rules: list[TextStylerRule | TextStylerRegexRule] = rules
         self.min_skips: int | None = None
 
-    def process_text(self, text: str, multiline: bool = False):
+    def process_text(self, text: str, multiline: bool = False) -> str:
         self.min_skips = None
-        if multiline:
-            return self._process_text(text)
-        return "".join(map(self._process_text, re.findall(r".*?\n|.+", text)))
+        return self._process_text(text, multiline)
 
-    def _process_text(self, text: str) -> str:
+    def _process_text(self, text: str, multiline: bool = False) -> str:
         if text == "":
             return text
         text = html.escape(text, quote=False)
-        paths = self._helper(text, 0, Path())
+        paths = self._helper(text, 0, Path(), multiline)
 
         # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
         # Then tie-break to the fewest blocks created
@@ -166,7 +166,9 @@ class TextStyler:
 
         return str(ast)
 
-    def _helper(self, text: str, start: int, path: Path) -> list[Path]:
+    def _helper(
+        self, text: str, start: int, path: Path, multiline: bool = False
+    ) -> list[Path]:
         if self.min_skips is not None and path.num_skips > self.min_skips:
             return []
         if text == "":
@@ -185,7 +187,10 @@ class TextStyler:
         paths: list[Path] = []
         for next in nexts:
             new_start = next.position
-            new_path = path.copy_and_push(TextAction(text[start:new_start]))
+            text_part = text[start:new_start]
+            if not multiline and len(path.stack) > 0 and "\n" in text_part:
+                continue
+            new_path = path.copy_and_push(TextAction(text_part))
 
             if isinstance(next, NextRegex):
                 new_start += len(next.match.group(0))
@@ -197,14 +202,17 @@ class TextStyler:
                     new_path = new_path.copy_and_push(PopAction())
                 elif is_start:
                     new_path = new_path.copy_and_push(PushAction(rule))
-                # else is_end but the top of the stack doesn't match? new_start moves forward but stack stays the same
-
-            paths.extend(self._helper(text, new_start, new_path))
+                else:  # is_end but the top of the stack doesn't match? new_start moves forward but stack stays the same
+                    continue
+            paths.extend(self._helper(text, new_start, new_path, multiline))
 
         # Fallback branch: skip the current set of tokens entirely
         new_start = nexts[-1].position + 1
-        new_path = path.copy_and_push(TextAction(text[start:new_start]), 1)
-        paths.extend(self._helper(text, new_start, new_path))
+        text_part = text[start:new_start]
+        if not multiline and len(path.stack) > 0 and "\n" in text_part:
+            return paths
+        new_path = path.copy_and_push(TextAction(text_part), 1)
+        paths.extend(self._helper(text, new_start, new_path, multiline))
         return paths
 
     def _find_next(self, text: str, start: int) -> list[NextStyle | NextRegex]:
@@ -229,8 +237,10 @@ class TextStyler:
 
 class SyntaxTree:
     def __init__(self):
-        self.children: list[SyntaxTreeNode | str] = []
-        self.curr: SyntaxTreeNode | None = None
+        self.root: SyntaxTreeNode = SyntaxTreeNode(
+            parent=None, rule=TextStylerRule(start="", transform=lambda s: s)
+        )
+        self.curr: SyntaxTreeNode = self.root
 
     def push(self, rule: TextStylerRule):
         new_node = SyntaxTreeNode(self.curr, rule)
@@ -246,19 +256,16 @@ class SyntaxTree:
             self._push(re.sub(r"\\(.)", r"\1", text))
 
     def _push(self, node: SyntaxTreeNode | str):
-        if self.curr is None:
-            self.children.append(node)
-        else:
-            self.curr.push(node)
+        self.curr.push(node)
 
     def pop(self):
-        if self.curr is None:
+        if self.curr == self.root or self.curr.parent is None:
             raise ValueError("Attempted to pop() when already at root")
         self.curr = self.curr.parent
 
     @override
     def __str__(self) -> str:
-        return "".join(map(str, self.children))
+        return str(self.root)
 
 
 class SyntaxTreeNode:
@@ -281,9 +288,24 @@ class SyntaxTreeNode:
         self.children.append(child)
 
     @override
-    def __str__(self):
+    def __str__(self) -> str:
         if isinstance(self.rule, TextStylerRule):
-            inner = "".join(map(str, self.children))
+            inner: str = ""
+
+            def get_key(node: SyntaxTreeNode | str) -> TextStylerRule | None:
+                if isinstance(node, SyntaxTreeNode) and isinstance(
+                    node.rule, TextStylerRule
+                ):
+                    return node.rule
+                return None
+
+            for rule, group in groupby(self.children, key=get_key):
+                group_str = "".join(map(str, list(group)))
+                if isinstance(rule, TextStylerRule) and rule.wrap_consecutive:
+                    inner += rule.wrap_consecutive(group_str)
+                else:
+                    inner += group_str
+
             if self._should_print_raw():
                 return self.rule.get_start() + inner + self.rule.get_end()
 

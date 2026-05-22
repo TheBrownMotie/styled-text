@@ -559,3 +559,58 @@ test("test_html_escaping", () => {
     "Normal &lt;script&gt;alert(1)&lt;/script&gt; and <strong>bold &lt;script&gt;alert(2)&lt;/script&gt;</strong>",
   );
 });
+
+
+test("test_wrap", () => {
+  const text_styler = new TextStyler<string>(
+    [
+      new TextStylerRule(
+        "- ",
+        htmlTag("li"), {
+        end: "\n",
+        wrap_consecutive: htmlTag("ul"),
+      })
+    ]
+  );
+  const message = "- first item\n- second item\n- third item\n";
+  expect(
+    text_styler.processText(message).join("")).toBe(
+    "<ul><li>first item</li><li>second item</li><li>third item</li></ul>"
+    );
+});
+
+test("test_wrap_complex", () => {
+  const text_styler = new TextStyler<string>(
+    [
+      new TextStylerRule("*", htmlTag("strong")),
+      new TextStylerRule(
+        "- ",
+        htmlTag("li"), {
+        end: "\n",
+        wrap_consecutive: htmlTag("ul"),
+      }),
+      new TextStylerRule(
+        "> ",
+        htmlTag("p"), {
+        end: "\n",
+        wrap_consecutive: htmlTag("blockquote"),
+      }),
+    ]
+  )
+
+  const message: string = [
+    "> A bad opinion",
+    "This is *wrong* because:",
+    "- reason number 1",
+    "- reason *number* 2",
+    "- reason *number 3",
+    "",
+    "> A *bigger*",
+    "> quote *of a",
+    "> wrong opinion",
+  ].join("\n").trimStart();
+  expect(
+    text_styler.processText(message).join("")).toBe(
+      "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li></ul>\n<blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
+    );
+});

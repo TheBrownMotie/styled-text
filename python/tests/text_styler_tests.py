@@ -757,3 +757,58 @@ def test_html_escaping():
         text_styler.process_text(message)
         == "Normal &lt;script&gt;alert(1)&lt;/script&gt; and <strong>bold &lt;script&gt;alert(2)&lt;/script&gt;</strong>"
     )
+
+
+def test_wrap():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start="- ",
+                transform=html_tag("li"),
+                end="\n",
+                wrap_consecutive=html_tag("ul"),
+            )
+        ]
+    )
+    message = "- first item\n- second item\n- third item\n"
+    assert (
+        text_styler.process_text(message)
+        == "<ul><li>first item</li><li>second item</li><li>third item</li></ul>"
+    )
+
+
+def test_wrap_complex():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(start="*", transform=html_tag("strong")),
+            TextStylerRule(
+                start="- ",
+                transform=html_tag("li"),
+                end="\n",
+                wrap_consecutive=html_tag("ul"),
+            ),
+            TextStylerRule(
+                start="> ",
+                transform=html_tag("p"),
+                end="\n",
+                wrap_consecutive=html_tag("blockquote"),
+            ),
+        ]
+    )
+
+    message = """
+> A bad opinion
+This is *wrong* because:
+- reason number 1
+- reason *number* 2
+- reason *number 3
+
+> A *bigger*
+> quote *of a
+> wrong opinion
+"""
+    message = message.lstrip()
+    assert (
+        text_styler.process_text(message)
+        == "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li></ul>\n<blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
+    )
