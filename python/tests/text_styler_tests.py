@@ -835,7 +835,7 @@ def test_regex_asymmetric_tags():
         ]
     )
     assert (
-        text_styler.process_text("a [TAG]b[/TAG] c [OTHER]d[/OTHER]")
+        text_styler.process_text("a [TAG]b[/BAZ] c [OTHER]d[/NOT]")
         == "a <em>b</em> c <em>d</em>"
     )
 
