@@ -812,3 +812,127 @@ This is *wrong* because:
         text_styler.process_text(message)
         == "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li></ul>\n<blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
     )
+
+
+def test_regex_symmetric_character_classes():
+    text_styler = TextStyler(
+        [TextStylerRule(start=re.compile(r"\d{3}"), transform=html_tag("strong"))]
+    )
+    assert (
+        text_styler.process_text("abc 123hello123 xyz")
+        == "abc <strong>hello</strong> xyz"
+    )
+
+
+def test_regex_asymmetric_tags():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"\[[A-Z]+\]"),
+                end=re.compile(r"\[/[A-Z]+\]"),
+                transform=html_tag("em"),
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text("a [TAG]b[/TAG] c [OTHER]d[/OTHER]")
+        == "a <em>b</em> c <em>d</em>"
+    )
+
+
+def test_regex_wrap_consecutive():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"^\s*-\s+", re.MULTILINE),
+                end="\n",
+                transform=html_tag("li"),
+                wrap_consecutive=html_tag("ul"),
+            )
+        ]
+    )
+    message = " - first\n    - second\n"
+    assert text_styler.process_text(message) == "<ul><li>first</li><li>second</li></ul>"
+
+
+def test_regex_escaped_html_interaction():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"&lt;[a-z]+&gt;"),
+                end=re.compile(r"&lt;/[a-z]+&gt;"),
+                transform=html_tag("div"),
+            )
+        ]
+    )
+    assert text_styler.process_text("<test>hello</test>") == "<div>hello</div>"
+
+
+def test_regex_anchors_and_multiline():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"^&gt;&gt;&gt; ", re.MULTILINE),
+                end=re.compile(r"$", re.MULTILINE),
+                transform=html_tag("blockquote"),
+            )
+        ]
+    )
+    message = "normal line\n>>> quoted line\n >>>another normal"
+    assert (
+        text_styler.process_text(message)
+        == "normal line\n<blockquote>quoted line</blockquote>\n &gt;&gt;&gt;another normal"
+    )
+
+
+def test_regex_consume_styles():
+    # Tests that dynamic regex matches correctly output into wrappers
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"\{+"),
+                end=re.compile(r"\}+"),
+                transform=html_tag("code"),
+                consume_start=ConsumptionStyle.OUTSIDE,
+                consume_end=ConsumptionStyle.OUTSIDE,
+            )
+        ]
+    )
+    assert text_styler.process_text("var {{test}}") == "var <code>{{test}}</code>"
+
+
+def test_regex_disallow_direct():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"\[del\]"),
+                end=re.compile(r"\[/del\]"),
+                transform=html_tag("del"),
+                allow_inner=InnerStyle.DISALLOW_DIRECT,
+            )
+        ]
+    )
+    assert (
+        text_styler.process_text("[del]strike [del]nested[/del] out[/del]")
+        == "<del>strike [del]nested[/del] out</del>"
+    )
+
+
+def test_regex_disallow_ancestors():
+    text_styler = TextStyler(
+        [
+            TextStylerRule(
+                start=re.compile(r"\[strong\]"),
+                end=re.compile(r"\[/strong\]"),
+                transform=html_tag("strong"),
+                allow_inner=InnerStyle.DISALLOW_ANCESTOR,
+            ),
+            TextStylerRule(start="_", transform=html_tag("em")),
+        ]
+    )
+    assert (
+        text_styler.process_text(
+            "[strong]bold _italic [strong]ignored[/strong] italic_ bold[/strong]"
+        )
+        == "<strong>bold <em>italic [strong]ignored[/strong] italic</em> bold</strong>"
+    )

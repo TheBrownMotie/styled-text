@@ -38,33 +38,34 @@ def html_tag(
 
 @dataclass
 class TextStylerRule:
-    start: str
+    start: str | re.Pattern[str]
     transform: Callable[[str], str]
-    end: str | None = None
+    end: str | re.Pattern[str] | None = None
     wrap_consecutive: Callable[[str], str] | None = None
 
     consume_start: ConsumptionStyle = ConsumptionStyle.REPLACE
     consume_end: ConsumptionStyle = ConsumptionStyle.REPLACE
     allow_inner: InnerStyle = InnerStyle.ALLOW
 
-    def get_end(self) -> str:
-        return html.escape(self.end or self.start)
+    def get_start_match(self, text: str, pos: int) -> str | None:
+        if isinstance(self.start, str):
+            start = self.get_start()
+            return start if text.startswith(start, pos) else None
+        match = self.start.match(text, pos)
+        return match.group(0) if match else None
+
+    def get_end_match(self, text: str, pos: int) -> str | None:
+        end = self.end if self.end is not None else self.start
+        if isinstance(end, str):
+            end = html.escape(end, quote=False)
+            return end if text.startswith(end, pos) else None
+        match = end.match(text, pos)
+        return match.group(0) if match else None
 
     def get_start(self) -> str:
-        return html.escape(self.start)
-
-    def get_wrappers(self) -> tuple[str, str, str, str]:
-        outer_prefix, inner_prefix, inner_suffix, outer_suffix = "", "", "", ""
-        if self.consume_start == ConsumptionStyle.INSIDE:
-            outer_prefix = self.get_end()
-        if self.consume_start == ConsumptionStyle.OUTSIDE:
-            inner_prefix = self.get_start()
-
-        if self.consume_end == ConsumptionStyle.INSIDE:
-            outer_suffix = self.get_end()
-        if self.consume_end == ConsumptionStyle.OUTSIDE:
-            inner_suffix = self.get_end()
-        return (outer_prefix, inner_prefix, inner_suffix, outer_suffix)
+        return (
+            html.escape(self.start, quote=False) if isinstance(self.start, str) else ""
+        )
 
 
 @dataclass
@@ -75,11 +76,12 @@ class TextAction:
 @dataclass
 class PushAction:
     rule: TextStylerRule
+    matched: str
 
 
 @dataclass
 class PopAction:
-    pass
+    matched: str
 
 
 @dataclass
@@ -94,6 +96,7 @@ class NextStyle(NamedTuple):
     position: int
     is_start: bool
     is_end: bool
+    matched: str
 
 
 class NextRegex(NamedTuple):
@@ -163,9 +166,9 @@ class TextStyler:
             if isinstance(action, TextAction):
                 ast.push_str(action.text)
             elif isinstance(action, PushAction):
-                ast.push(action.rule)
+                ast.push(action.rule, action.matched)
             elif isinstance(action, PopAction):
-                ast.pop()
+                ast.pop(action.matched)
             else:
                 ast.push_regex(action.rule, action.match)
 
@@ -201,12 +204,14 @@ class TextStyler:
                 new_start += len(next.match.group(0))
                 new_path = new_path.copy_and_push(RegexAction(next.rule, next.match))
             else:
-                rule, _, is_start, is_end = next
-                new_start += len(rule.get_start() if is_start else rule.get_end())
+                rule, _, is_start, is_end, matched = next
+                new_start += len(matched)
                 if is_end and len(path.stack) > 0 and path.peek() == rule:
-                    new_path = new_path.copy_and_push(PopAction())
+                    new_path = new_path.copy_and_push(PopAction(matched))
                 elif is_start:
-                    new_path = new_path.copy_and_push(PushAction(rule))
+                    if len(matched) == 0:
+                        continue  # Prevent infinite loops from 0-length regexes
+                    new_path = new_path.copy_and_push(PushAction(rule, matched))
                 else:  # is_end but the top of the stack doesn't match? new_start moves forward but stack stays the same
                     continue
             paths.extend(self._helper(text, new_start, new_path, multiline))
@@ -216,23 +221,34 @@ class TextStyler:
         text_part = text[start:new_start]
         if not multiline and len(path.stack) > 0 and "\n" in text_part:
             return paths
+
         new_path = path.copy_and_push(TextAction(text_part), 1)
         paths.extend(self._helper(text, new_start, new_path, multiline))
         return paths
 
-    def _find_next(self, text: str, start: int) -> list[NextStyle | NextRegex]:
+    def _find_next(self, text: str, start_index: int) -> list[NextStyle | NextRegex]:
         nexts: list[NextStyle | NextRegex] = []
         escaped = False
-        for index in range(start, len(text)):
+        for index in range(start_index, len(text)):
             for marking in self.rules:
                 if isinstance(marking, TextStylerRegexRule):
                     if match := marking.regex.match(text, index):
                         nexts.append(NextRegex(marking, index, match))
                 elif not escaped:
-                    is_start = text.startswith(marking.get_start(), index)
-                    is_end = text.startswith(marking.get_end(), index)
-                    if is_start or is_end:
-                        nexts.append(NextStyle(marking, index, is_start, is_end))
+                    start = marking.get_start_match(text, index)
+                    end = marking.get_end_match(text, index)
+
+                    if start is not None or end is not None:
+                        matched = start if start is not None else (end or "")
+                        nexts.append(
+                            NextStyle(
+                                marking,
+                                index,
+                                start is not None,
+                                end is not None,
+                                matched,
+                            )
+                        )
 
             escaped = text[index] == "\\" and not escaped
             if len(nexts) > 0:
@@ -247,8 +263,8 @@ class SyntaxTree:
         )
         self.curr: SyntaxTreeNode = self.root
 
-    def push(self, rule: TextStylerRule):
-        new_node = SyntaxTreeNode(self.curr, rule)
+    def push(self, rule: TextStylerRule, matched: str):
+        new_node = SyntaxTreeNode(self.curr, rule, start_match=matched)
         self._push(new_node)
         self.curr = new_node
 
@@ -263,9 +279,10 @@ class SyntaxTree:
     def _push(self, node: SyntaxTreeNode | str):
         self.curr.push(node)
 
-    def pop(self):
+    def pop(self, matched: str):
         if self.curr == self.root or self.curr.parent is None:
             raise ValueError("Attempted to pop() when already at root")
+        self.curr.end_match = matched
         self.curr = self.curr.parent
 
     @override
@@ -279,10 +296,13 @@ class SyntaxTreeNode:
         parent: SyntaxTreeNode | None,
         rule: TextStylerRule | TextStylerRegexRule,
         match: re.Match[str] | None = None,
+        start_match: str = "",
     ):
         self.parent: SyntaxTreeNode | None = parent
         self.rule: TextStylerRule | TextStylerRegexRule = rule
         self.match: re.Match[str] | None = match
+        self.start_match: str = start_match
+        self.end_match: str = ""
 
         self.children: list[str | SyntaxTreeNode] = []
         self.path: tuple[TextStylerRule, ...] = ()
@@ -297,7 +317,7 @@ class SyntaxTreeNode:
         if isinstance(self.rule, TextStylerRule):
             inner: str = ""
 
-            def get_key(node: SyntaxTreeNode | str) -> TextStylerRule | None:
+            def get_key(node: "SyntaxTreeNode | str") -> TextStylerRule | None:
                 if isinstance(node, SyntaxTreeNode) and isinstance(
                     node.rule, TextStylerRule
                 ):
@@ -305,18 +325,26 @@ class SyntaxTreeNode:
                 return None
 
             for rule, group in groupby(self.children, key=get_key):
-                group_str = "".join(map(str, list(group)))
+                group_list = list(group)
+                group_str = "".join(map(str, group_list))
                 if isinstance(rule, TextStylerRule) and rule.wrap_consecutive:
                     inner += rule.wrap_consecutive(group_str)
                 else:
                     inner += group_str
 
             if self._should_print_raw():
-                return self.rule.get_start() + inner + self.rule.get_end()
+                return self.start_match + inner + self.end_match
 
-            outer_prefix, inner_prefix, inner_suffix, outer_suffix = (
-                self.rule.get_wrappers()
-            )
+            outer_prefix, inner_prefix, inner_suffix, outer_suffix = "", "", "", ""
+            if self.rule.consume_start == ConsumptionStyle.INSIDE:
+                outer_prefix = self.start_match
+            elif self.rule.consume_start == ConsumptionStyle.OUTSIDE:
+                inner_prefix = self.start_match
+            if self.rule.consume_end == ConsumptionStyle.INSIDE:
+                outer_suffix = self.end_match
+            elif self.rule.consume_end == ConsumptionStyle.OUTSIDE:
+                inner_suffix = self.end_match
+
             inner = inner_prefix + inner + inner_suffix
             return outer_prefix + self.rule.transform(inner) + outer_suffix
         elif self.match is not None:
