@@ -140,7 +140,12 @@ class TextStyler:
 
     def process_text(self, text: str, multiline: bool = False) -> str:
         self.min_skips = None
-        return self._process_text(text, multiline)
+        needs_cleanup = not text.endswith("\n")
+        normalized_text = text if not needs_cleanup else text + "\n"
+        result = self._process_text(normalized_text, multiline)
+        if needs_cleanup and result.endswith("\n"):
+            return result[:-1]
+        return result
 
     def _process_text(self, text: str, multiline: bool = False) -> str:
         if text == "":

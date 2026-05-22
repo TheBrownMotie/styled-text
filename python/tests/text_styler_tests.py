@@ -807,7 +807,7 @@ This is *wrong* because:
 > quote *of a
 > wrong opinion
 """
-    message = message.lstrip()
+    message = message.strip()
     assert (
         text_styler.process_text(message)
         == "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li></ul>\n<blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
