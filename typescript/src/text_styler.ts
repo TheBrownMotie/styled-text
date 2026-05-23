@@ -35,11 +35,20 @@ export function htmlTag(
   };
 }
 
+function withGlobalFlag(regex: RegExp): RegExp {
+  if (regex.flags.includes("g")) {
+    return regex;
+  }
+  return new RegExp(regex.source, regex.flags + "g");
+}
+
 export class TextStylerRegexRule<T> {
   constructor(
     public regex: RegExp,
     public transform: (match: RegExpMatchArray) => T,
-  ) {}
+  ) {
+    this.regex = withGlobalFlag(regex);
+  }
 }
 
 export class TextStylerRule<T> {
@@ -50,9 +59,6 @@ export class TextStylerRule<T> {
   public consumeStart: ConsumptionStyle;
   public consumeEnd: ConsumptionStyle;
   public allowInner: InnerStyle;
-
-  private _startRegex: RegExp | null = null;
-  private _endRegex: RegExp | null = null;
 
   constructor(
     start: string | RegExp,
@@ -74,10 +80,10 @@ export class TextStylerRule<T> {
     this.allowInner = options?.allowInner ?? InnerStyle.ALLOW;
 
     if (this.start instanceof RegExp) {
-      this._startRegex = new RegExp(this.start.source, this.start.flags.includes("g") ? this.start.flags : this.start.flags + "g");
+      this.start = withGlobalFlag(this.start);
     }
     if (this.end instanceof RegExp) {
-      this._endRegex = new RegExp(this.end.source, this.end.flags.includes("g") ? this.end.flags : this.end.flags + "g");
+      this.end = withGlobalFlag(this.end);
     }
   }
 
@@ -85,10 +91,9 @@ export class TextStylerRule<T> {
       if (typeof this.start === "string") {
         const startStr = this.getStart();
         return text.startsWith(startStr, pos) ? startStr : null;
-      }
-      if (this._startRegex) {
-        this._startRegex.lastIndex = pos;
-        const match = this._startRegex.exec(text);
+      } else {
+        this.start.lastIndex = pos;
+        const match = this.start.exec(text);
         return match && match.index === pos ? match[0] : null;
       }
       return null;
@@ -98,11 +103,9 @@ export class TextStylerRule<T> {
       const end = this.end !== null ? this.end : this.start;
       if (typeof end === "string") {
         return text.startsWith(end, pos) ? end : null;
-      }
-      const regex = this.end !== null ? this._endRegex : this._startRegex;
-      if (regex) {
-        regex.lastIndex = pos;
-        const match = regex.exec(text);
+      } else {
+        end.lastIndex = pos;
+        const match = end.exec(text);
         return match && match.index === pos ? match[0] : null;
       }
       return null;
@@ -283,8 +286,9 @@ export class TextStyler<T> {
     for (let index = start; index < text.length; index++) {
       for (const marking of this.rule) {
         if (marking instanceof TextStylerRegexRule) {
-          const match = text.slice(index).match(marking.regex);
-          if (match && match.index === 0) {
+          marking.regex.lastIndex = index;
+          const match = marking.regex.exec(text);
+          if (match && match.index === index) {
             nexts.push({ type: "REGEX", rule: marking, position: index, match });
           }
         } else if (!isEscaped) {

@@ -405,22 +405,22 @@ test("test_keep_all_markings_inside", () => {
 
 test("test_regex", () => {
   const text_styler = new TextStyler<string>([
-    new TextStylerRegexRule(/>>(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`),
+    new TextStylerRegexRule(/>>(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>&gt;&gt;${match[1]}</link>`),
   ]);
 
   expect(text_styler.processText("This is an imageboard style >>12345 link").join("")).toBe(
-    "This is an imageboard style <link id='12345'>>>12345</link> link",
+    "This is an imageboard style <link id='12345'>&gt;&gt;12345</link> link",
   );
 });
 
 test("test_regex_wrapped_with_strong", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong")),
-    new TextStylerRegexRule(/>>(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`),
+    new TextStylerRegexRule(/>>(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>&gt;&gt;${match[1]}</link>`),
   ]);
 
   expect(text_styler.processText("This is an imageboard *style >>12345 link* that is bolded").join("")).toBe(
-    "This is an imageboard <strong>style <link id='12345'>>>12345</link> link</strong> that is bolded",
+    "This is an imageboard <strong>style <link id='12345'>&gt;&gt;12345</link> link</strong> that is bolded",
   );
 });
 
@@ -429,12 +429,12 @@ test("test_regex_wrapped_with_strong_inside_it1", () => {
     new TextStylerRule("*", htmlTag("strong")),
     new TextStylerRegexRule(
       />>([*\d]+)/,
-      (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`,
+      (match: RegExpMatchArray) => `<link id='${match[1]}'>&gt;&gt;${match[1]}</link>`,
     ),
   ]);
 
   expect(text_styler.processText("This is a regex unaffected >>12*3*45 by *asterisks* inside it").join("")).toBe(
-    "This is a regex unaffected <link id='12*3*45'>>>12*3*45</link> by <strong>asterisks</strong> inside it",
+    "This is a regex unaffected <link id='12*3*45'>&gt;&gt;12*3*45</link> by <strong>asterisks</strong> inside it",
   );
 });
 
@@ -457,12 +457,12 @@ test("test_regex_wrapped_with_strong_inside_it3", () => {
     new TextStylerRule("*", htmlTag("strong")),
     new TextStylerRegexRule(
       />>([*\d]+)/,
-      (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`,
+      (match: RegExpMatchArray) => `<link id='${match[1]}'>&gt;&gt;${match[1]}</link>`,
     ),
   ]);
 
   expect(text_styler.processText("This is a regex unbroken by an asterisk >>12*345 that came* second").join("")).toBe(
-    "This is a regex unbroken by an asterisk <link id='12*345'>>>12*345</link> that came* second",
+    "This is a regex unbroken by an asterisk <link id='12*345'>&gt;&gt;12*345</link> that came* second",
   );
 });
 
@@ -736,4 +736,32 @@ test('test_regex_disallow_ancestors', () => {
   expect(textStyler.processText("[strong]bold _italic [strong]ignored[/strong] italic_ bold[/strong]").join('')).toBe(
     "<strong>bold <em>italic [strong]ignored[/strong] italic</em> bold</strong>"
   );
+});
+
+
+test('test_regex_absolute_start_anchor', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRegexRule(/^# (.+)/, (m) => `<h1>${m[1]}</h1>`)
+  ]);
+
+  const message = "Intro\n# Heading";
+  expect(textStyler.processText(message).join('')).toBe("Intro\n# Heading");
+});
+
+test('test_regex_word_boundary', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRegexRule(/\bcat\b/, () => "<meow>")
+  ]);
+
+  const message = "tomcat";
+  expect(textStyler.processText(message).join('')).toBe("tomcat");
+});
+
+test('test_regex_lookbehind', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRegexRule(/(?<=@)[a-z]+/, (m) => `<user>${m[0]}</user>`)
+  ]);
+
+  const message = "Hello @brownmotie";
+  expect(textStyler.processText(message).join('')).toBe("Hello @<user>brownmotie</user>");
 });

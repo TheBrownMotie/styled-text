@@ -554,8 +554,8 @@ def test_regex():
     text_styler = TextStyler(
         [
             TextStylerRegexRule(
-                regex=re.compile(r"&gt;&gt;(\d+)"),
-                replace=r"<link id='\1'>\g<0></link>",
+                regex=re.compile(r">>(\d+)"),
+                replace=r"<link id='\1'>&gt;&gt;\1</link>",
             )
         ]
     )
@@ -573,8 +573,8 @@ def test_regex_wrapped_with_strong():
         [
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
-                regex=re.compile(r"&gt;&gt;(\d+)"),
-                replace=r"<link id='\1'>\g<0></link>",
+                regex=re.compile(r">>(\d+)"),
+                replace=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -592,8 +592,8 @@ def test_regex_wrapped_with_strong_inside_it1():
         [
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
-                regex=re.compile(r"&gt;&gt;([*\d]+)"),
-                replace=r"<link id='\1'>\g<0></link>",
+                regex=re.compile(r">>([*\d]+)"),
+                replace=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -611,8 +611,8 @@ def test_regex_wrapped_with_strong_inside_it2():
         [
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
-                regex=re.compile(r"&gt;&gt;([*\d]+)"),
-                replace=r"<link id='\1'>\g<0></link>",
+                regex=re.compile(r">>([*\d]+)"),
+                replace=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -630,8 +630,8 @@ def test_regex_wrapped_with_strong_inside_it3():
         [
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
-                regex=re.compile(r"&gt;&gt;([*\d]+)"),
-                replace=r"<link id='\1'>\g<0></link>",
+                regex=re.compile(r">>([*\d]+)"),
+                replace=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -861,8 +861,8 @@ def test_regex_escaped_html_interaction():
     text_styler = TextStyler(
         [
             TextStylerRule(
-                start=re.compile(r"&lt;[a-z]+&gt;"),
-                end=re.compile(r"&lt;/[a-z]+&gt;"),
+                start=re.compile(r"<[a-z]+>"),
+                end=re.compile(r"</[a-z]+>"),
                 transform=html_tag("div"),
             )
         ]
@@ -874,7 +874,7 @@ def test_regex_anchors_and_multiline():
     text_styler = TextStyler(
         [
             TextStylerRule(
-                start=re.compile(r"^&gt;&gt;&gt; ", re.MULTILINE),
+                start=re.compile(r"^>>> ", re.MULTILINE),
                 end=re.compile(r"$", re.MULTILINE),
                 transform=html_tag("blockquote"),
             )
@@ -938,3 +938,31 @@ def test_regex_disallow_ancestors():
         )
         == "<strong>bold <em>italic [strong]ignored[/strong] italic</em> bold</strong>"
     )
+
+
+def test_regex_absolute_start_anchor():
+    text_styler = TextStyler(
+        [TextStylerRegexRule(re.compile(r"^# (.+)"), r"<h1>\1</h1>")]
+    )
+    message = "Intro\n# Heading"
+
+    # Without the fix, this falsely matches the mid-string line and wraps it in <h1>
+    assert text_styler.process_text(message) == "Intro\n# Heading"
+
+
+def test_regex_word_boundary():
+    text_styler = TextStyler([TextStylerRegexRule(re.compile(r"\bcat\b"), "<meow>")])
+    message = "tomcat"
+
+    # Without the fix, the parser slices to "cat", creates a fake word boundary, and replaces it.
+    assert text_styler.process_text(message) == "tomcat"
+
+
+def test_regex_lookbehind():
+    text_styler = TextStyler(
+        [TextStylerRegexRule(re.compile(r"(?<=@)[a-z]+"), r"<user>\g<0></user>")]
+    )
+    message = "Hello @brownmotie"
+
+    # Without the fix, the parser slices away the "@" and the lookbehind fails.
+    assert text_styler.process_text(message) == "Hello @<user>brownmotie</user>"

@@ -3,6 +3,7 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
+from glob import escape
 from itertools import groupby
 from re import Match, Pattern, sub
 from typing import NamedTuple, override
@@ -57,15 +58,12 @@ class TextStylerRule:
     def get_end_match(self, text: str, pos: int) -> str | None:
         end = self.end if self.end is not None else self.start
         if isinstance(end, str):
-            end = html.escape(end, quote=False)
             return end if text.startswith(end, pos) else None
         match = end.match(text, pos)
         return match.group(0) if match else None
 
     def get_start(self) -> str:
-        return (
-            html.escape(self.start, quote=False) if isinstance(self.start, str) else ""
-        )
+        return self.start if isinstance(self.start, str) else ""
 
 
 @dataclass
@@ -141,19 +139,22 @@ class TextStyler:
         self.rules: list[TextStylerRule | TextStylerRegexRule] = rules
         self.min_skips: int | None = None
 
-    def process_text(self, text: str, multiline: bool = False) -> str:
+    def process_text(
+        self, text: str, multiline: bool = False, escape_html: bool = True
+    ) -> str:
         self.min_skips = None
         needs_cleanup = not text.endswith("\n")
         normalized_text = text if not needs_cleanup else text + "\n"
-        result = self._process_text(normalized_text, multiline)
+        result = self._process_text(normalized_text, multiline, escape_html)
         if needs_cleanup and result.endswith("\n"):
             return result[:-1]
         return result
 
-    def _process_text(self, text: str, multiline: bool = False) -> str:
+    def _process_text(
+        self, text: str, multiline: bool = False, escape_html: bool = True
+    ) -> str:
         if text == "":
             return text
-        text = html.escape(text, quote=False)
         paths = self._helper(text, 0, Path(), multiline)
 
         # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
@@ -161,7 +162,7 @@ class TextStyler:
         best_path = min(paths, key=lambda p: (p.num_skips, p.num_pushes))
 
         # Build the tree
-        ast = SyntaxTree()
+        ast = SyntaxTree(escape_html)
         for action in best_path.actions:
             if isinstance(action, TextAction):
                 ast.push_str(action.text)
@@ -257,19 +258,24 @@ class TextStyler:
 
 
 class SyntaxTree:
-    def __init__(self):
+    def __init__(self, escape_html: bool = True):
+        self.escape_html: bool = escape_html
         self.root: SyntaxTreeNode = SyntaxTreeNode(
-            parent=None, rule=TextStylerRule(start="", transform=lambda s: s)
+            parent=None,
+            rule=TextStylerRule(start="", transform=lambda s: s),
+            escape_html=self.escape_html,
         )
         self.curr: SyntaxTreeNode = self.root
 
     def push(self, rule: TextStylerRule, matched: str):
-        new_node = SyntaxTreeNode(self.curr, rule, start_match=matched)
+        new_node = SyntaxTreeNode(
+            self.curr, rule, start_match=matched, escape_html=self.escape_html
+        )
         self._push(new_node)
         self.curr = new_node
 
     def push_regex(self, rule: TextStylerRegexRule, match: re.Match[str]):
-        new_node = SyntaxTreeNode(self.curr, rule, match)
+        new_node = SyntaxTreeNode(self.curr, rule, match, escape_html=self.escape_html)
         self._push(new_node)
 
     def push_str(self, text: str):
@@ -297,12 +303,14 @@ class SyntaxTreeNode:
         rule: TextStylerRule | TextStylerRegexRule,
         match: re.Match[str] | None = None,
         start_match: str = "",
+        escape_html: bool = True,
     ):
         self.parent: SyntaxTreeNode | None = parent
         self.rule: TextStylerRule | TextStylerRegexRule = rule
         self.match: re.Match[str] | None = match
         self.start_match: str = start_match
         self.end_match: str = ""
+        self.escape_html: bool = escape_html
 
         self.children: list[str | SyntaxTreeNode] = []
         self.path: tuple[TextStylerRule, ...] = ()
@@ -311,6 +319,9 @@ class SyntaxTreeNode:
 
     def push(self, child: str | SyntaxTreeNode):
         self.children.append(child)
+
+    def _escape(self, text: str) -> str:
+        return html.escape(text, quote=False) if self.escape_html else text
 
     @override
     def __str__(self) -> str:
@@ -325,30 +336,37 @@ class SyntaxTreeNode:
                 return None
 
             for rule, group in groupby(self.children, key=get_key):
-                group_list = list(group)
-                group_str = "".join(map(str, group_list))
+                rendered_items = [
+                    self._escape(child) if isinstance(child, str) else str(child)
+                    for child in group
+                ]
+                group_str = "".join(rendered_items)
                 if isinstance(rule, TextStylerRule) and rule.wrap_consecutive:
                     inner += rule.wrap_consecutive(group_str)
                 else:
                     inner += group_str
 
             if self._should_print_raw():
-                return self.start_match + inner + self.end_match
+                return (
+                    self._escape(self.start_match)
+                    + inner
+                    + self._escape(self.end_match)
+                )
 
             outer_prefix, inner_prefix, inner_suffix, outer_suffix = "", "", "", ""
             if self.rule.consume_start == ConsumptionStyle.INSIDE:
-                outer_prefix = self.start_match
+                outer_prefix = self._escape(self.start_match)
             elif self.rule.consume_start == ConsumptionStyle.OUTSIDE:
-                inner_prefix = self.start_match
+                inner_prefix = self._escape(self.start_match)
             if self.rule.consume_end == ConsumptionStyle.INSIDE:
-                outer_suffix = self.end_match
+                outer_suffix = self._escape(self.end_match)
             elif self.rule.consume_end == ConsumptionStyle.OUTSIDE:
-                inner_suffix = self.end_match
+                inner_suffix = self._escape(self.end_match)
 
             inner = inner_prefix + inner + inner_suffix
             return outer_prefix + self.rule.transform(inner) + outer_suffix
         elif self.match is not None:
-            return sub(self.rule.regex, self.rule.replace, self.match.group(0))
+            return self.match.expand(self.rule.replace)
         raise ValueError("TextStylerRegexRule provided without a valid `match`")
 
     def _should_print_raw(self) -> bool:
