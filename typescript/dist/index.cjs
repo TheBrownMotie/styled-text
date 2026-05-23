@@ -282,12 +282,15 @@ var TextStyler = class {
 function groupBy(children) {
   const groupedChildren = [];
   for (const child of children) {
+    const isWhitespace = typeof child === "string" && child.trim() === "";
     const rule = child instanceof SyntaxTreeNode && child.rule instanceof TextStylerRule ? child.rule : null;
     if (groupedChildren.length === 0) {
-      groupedChildren.push({ rule, items: [child] });
+      groupedChildren.push({ rule: isWhitespace ? null : rule, items: [child] });
     } else {
       const lastGroup = groupedChildren[groupedChildren.length - 1];
-      if (lastGroup.rule === rule) {
+      if (isWhitespace && lastGroup.rule !== null) {
+        lastGroup.items.push(child);
+      } else if (lastGroup.rule === rule) {
         lastGroup.items.push(child);
       } else {
         groupedChildren.push({ rule, items: [child] });

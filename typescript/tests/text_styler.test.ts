@@ -611,7 +611,7 @@ test("test_wrap_complex", () => {
   ].join("\n").trimStart();
   expect(
     text_styler.processText(message).join("")).toBe(
-      "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li></ul>\n<blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
+      "<blockquote><p>A bad opinion</p></blockquote>This is <strong>wrong</strong> because:\n<ul><li>reason number 1</li><li>reason <strong>number</strong> 2</li><li>reason *number 3</li>\n</ul><blockquote><p>A <strong>bigger</strong></p><p>quote *of a</p><p>wrong opinion</p></blockquote>"
     );
 });
 
@@ -638,7 +638,7 @@ test('test_regex_asymmetric_tags', () => {
   );
 });
 
-test('test_regex_wrap_consecutive', () => {
+test('test_regex_wrap_consecutive1', () => {
   const textStyler = new TextStyler([
     new TextStylerRule(
       /^\s*-\s+/m,
@@ -649,6 +649,20 @@ test('test_regex_wrap_consecutive', () => {
   const message = " - first\n    - second\n";
   expect(textStyler.processText(message).join('')).toBe(
     "<ul><li>first</li><li>second</li></ul>"
+  );
+});
+
+test('test_regex_wrap_consecutive2', () => {
+  const textStyler = new TextStyler([
+    new TextStylerRule(
+      /^\s*-\s+/m,
+      htmlTag('li'),
+      { end: /$/m, wrapConsecutive: htmlTag('ul') }
+    )
+  ]);
+  const message = " - first\n    - second\n";
+  expect(textStyler.processText(message).join('')).toBe(
+    "<ul><li>first</li>\n<li>second</li>\n</ul>"
   );
 });
 

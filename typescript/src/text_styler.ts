@@ -320,12 +320,18 @@ function groupBy<T>(children: (string | SyntaxTreeNode<T>)[]): Group<T>[] {
   const groupedChildren: Group<T>[] = [];
 
   for (const child of children) {
+    const isWhitespace = typeof child === "string" && child.trim() === "";
     const rule = child instanceof SyntaxTreeNode && child.rule instanceof TextStylerRule ? child.rule : null;
+
     if (groupedChildren.length === 0) {
-      groupedChildren.push({ rule, items: [child] });
+      groupedChildren.push({ rule: isWhitespace ? null : rule, items: [child] });
     } else {
       const lastGroup = groupedChildren[groupedChildren.length - 1];
-      if (lastGroup.rule === rule) {
+
+      // If the node is just whitespace, absorb it into the current group!
+      if (isWhitespace && lastGroup.rule !== null) {
+        lastGroup.items.push(child);
+      } else if (lastGroup.rule === rule) {
         lastGroup.items.push(child);
       } else {
         groupedChildren.push({ rule, items: [child] });

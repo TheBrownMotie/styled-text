@@ -1,6 +1,6 @@
 {
   "name": "@brownmotie/styled-text",
-  "version": "1.2.2",
+  "version": "1.2.3",
   "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "author": "brownmotie",
   "license": "MIT",

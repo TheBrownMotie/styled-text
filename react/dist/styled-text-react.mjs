@@ -179,15 +179,15 @@ var s = class {
 function d(e) {
 	let t = [];
 	for (let n of e) {
-		let e = n instanceof p && n.rule instanceof c ? n.rule : null;
+		let e = typeof n == "string" && n.trim() === "", r = n instanceof p && n.rule instanceof c ? n.rule : null;
 		if (t.length === 0) t.push({
-			rule: e,
+			rule: e ? null : r,
 			items: [n]
 		});
 		else {
-			let r = t[t.length - 1];
-			r.rule === e ? r.items.push(n) : t.push({
-				rule: e,
+			let i = t[t.length - 1];
+			e && i.rule !== null || i.rule === r ? i.items.push(n) : t.push({
+				rule: r,
 				items: [n]
 			});
 		}
