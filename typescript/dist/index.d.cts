@@ -15,21 +15,26 @@ declare class TextStylerRegexRule<T> {
     constructor(regex: RegExp, transform: (match: RegExpMatchArray) => T);
 }
 declare class TextStylerRule<T> {
-    start: string;
+    start: string | RegExp;
     transform: (children: (T | string)[]) => T;
-    end: string | null;
+    end: string | RegExp | null;
+    wrap_consecutive: ((children: (T | string)[]) => T) | null;
     consume_start: ConsumptionStyle;
     consume_end: ConsumptionStyle;
     allow_inner: InnerStyle;
-    constructor(start: string, transform: (children: (T | string)[]) => T, options?: {
-        end?: string | null;
+    private _startRegex;
+    private _endRegex;
+    constructor(start: string | RegExp, transform: (children: (T | string)[]) => T, options?: {
+        end?: string | RegExp | null;
+        wrap_consecutive?: (children: (T | string)[]) => T;
         consume_start?: ConsumptionStyle;
         consume_end?: ConsumptionStyle;
         allow_inner?: InnerStyle;
     });
-    get_end(): string;
+    get_start_match(text: string, pos: number): string | null;
+    get_end_match(text: string, pos: number): string | null;
     get_start(): string;
-    get_wrappers(): [string, string, string, string];
+    get_end(): string;
 }
 type RuleType<T> = TextStylerRule<T> | TextStylerRegexRule<T>;
 declare class TextStyler<T> {

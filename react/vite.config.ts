@@ -12,9 +12,16 @@ export default defineConfig({
     lib: {
       entry: resolve(__dirname, "src/index.ts"),
       formats: ["es"],
+      fileName: 'styled-text-react',
     },
     rollupOptions: {
-      external: ["react", "react-dom", "my-core-library"],
+      external: ['react', 'react-dom', 'react/jsx-runtime'],
+      output: {
+        globals: {
+          react: 'React',
+          'react-dom': 'ReactDOM',
+        },
+      },
     },
   },
 });

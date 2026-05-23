@@ -14,5 +14,5 @@
       "styled-text": ["../typescript/src/text_styler.ts"],
     },
   },
-  "include": ["."],
+  "include": ["src"],
 }

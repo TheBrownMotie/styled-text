@@ -1,6 +1,6 @@
 {
   "name": "@brownmotie/styled-text-react",
-  "version": "1.2.0",
+  "version": "1.2.3",
   "description": "Flexible library to convert a text with custom markup to html (or anything else).",
   "author": "brownmotie",
   "license": "MIT",
@@ -14,16 +14,16 @@
   },
   "type": "commonjs",
   "dependencies": {
-    "@brownmotie/styled-text": "^1.0.2"
+    "@brownmotie/styled-text": "^1.2.0"
   },
-  "main": "dist/src/index.js",
-  "module": "dist/src/index.js",
-  "types": "dist/src/index.d.ts",
+  "main": "./dist/styled-text-react.mjs",
+  "module": "./dist/styled-text-react.mjs",
+  "types": "./dist/src/index.d.ts",
   "exports": {
     ".": {
       "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js",
-      "require": "./dist/src/index.cjs"
+      "import": "./dist/styled-text-react.mjs",
+      "default": "./dist/styled-text-react.mjs"
     }
   },
   "files": [

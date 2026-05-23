@@ -25,38 +25,59 @@ var TextStylerRule = class {
   start;
   transform;
   end;
+  wrap_consecutive;
   consume_start;
   consume_end;
   allow_inner;
+  _startRegex = null;
+  _endRegex = null;
   constructor(start, transform, options) {
     this.start = start;
     this.transform = transform;
     this.end = options?.end ?? null;
+    this.wrap_consecutive = options?.wrap_consecutive ?? null;
     this.consume_start = options?.consume_start ?? "REPLACE" /* REPLACE */;
     this.consume_end = options?.consume_end ?? "REPLACE" /* REPLACE */;
     this.allow_inner = options?.allow_inner ?? "ALLOW" /* ALLOW */;
+    if (this.start instanceof RegExp) {
+      this._startRegex = new RegExp(this.start.source, this.start.flags.includes("g") ? this.start.flags : this.start.flags + "g");
+    }
+    if (this.end instanceof RegExp) {
+      this._endRegex = new RegExp(this.end.source, this.end.flags.includes("g") ? this.end.flags : this.end.flags + "g");
+    }
   }
-  get_end() {
-    return htmlEscape(this.end || this.start);
+  get_start_match(text, pos) {
+    if (typeof this.start === "string") {
+      const startStr = this.get_start();
+      return text.startsWith(startStr, pos) ? startStr : null;
+    }
+    if (this._startRegex) {
+      this._startRegex.lastIndex = pos;
+      const match = this._startRegex.exec(text);
+      return match && match.index === pos ? match[0] : null;
+    }
+    return null;
+  }
+  get_end_match(text, pos) {
+    const end = this.end !== null ? this.end : this.start;
+    if (typeof end === "string") {
+      const endStr = htmlEscape(end);
+      return text.startsWith(endStr, pos) ? endStr : null;
+    }
+    const regex = this.end !== null ? this._endRegex : this._startRegex;
+    if (regex) {
+      regex.lastIndex = pos;
+      const match = regex.exec(text);
+      return match && match.index === pos ? match[0] : null;
+    }
+    return null;
   }
   get_start() {
-    return htmlEscape(this.start);
+    return typeof this.start === "string" ? htmlEscape(this.start) : "";
   }
-  get_wrappers() {
-    let outer_prefix = "", inner_prefix = "", inner_suffix = "", outer_suffix = "";
-    if (this.consume_start === "INSIDE" /* INSIDE */) {
-      outer_prefix = this.get_end();
-    }
-    if (this.consume_start === "OUTSIDE" /* OUTSIDE */) {
-      inner_prefix = this.get_start();
-    }
-    if (this.consume_end === "INSIDE" /* INSIDE */) {
-      outer_suffix = this.get_end();
-    }
-    if (this.consume_end === "OUTSIDE" /* OUTSIDE */) {
-      inner_suffix = this.get_end();
-    }
-    return [outer_prefix, inner_prefix, inner_suffix, outer_suffix];
+  get_end() {
+    const end = this.end !== null ? this.end : this.start;
+    return typeof end === "string" ? htmlEscape(end) : "";
   }
 };
 var Path = class _Path {
@@ -96,25 +117,26 @@ var TextStyler = class {
   }
   processText(text, multiline = false) {
     this.min_skips = null;
-    if (multiline) {
-      return this._process_text(text);
+    const needs_cleanup = !text.endsWith("\n");
+    const normalizedText = needs_cleanup ? text + "\n" : text;
+    const result = this._process_text(normalizedText, multiline);
+    if (needs_cleanup && result.length > 0) {
+      const last = result[result.length - 1];
+      if (typeof last === "string") {
+        result[result.length - 1] = last.replace(/\n$/, "");
+      }
     }
-    const texts = text.match(/.*?\n|.+/g) || [];
-    return texts.flatMap((t) => this._process_text(t));
+    return result;
   }
-  _process_text(text) {
+  _process_text(text, multiline = false) {
     if (text === "") {
       return [];
     }
     text = htmlEscape(text);
-    const paths = this._helper(text, 0, new Path());
+    const paths = this._helper(text, 0, new Path(), multiline);
     const best_path = paths.reduce((best, curr) => {
-      if (curr.num_skips < best.num_skips) {
-        return curr;
-      }
-      if (curr.num_skips > best.num_skips) {
-        return best;
-      }
+      if (curr.num_skips < best.num_skips) return curr;
+      if (curr.num_skips > best.num_skips) return best;
       return curr.num_pushes < best.num_pushes ? curr : best;
     });
     const ast = new SyntaxTree();
@@ -122,16 +144,16 @@ var TextStyler = class {
       if (action.type === "TEXT") {
         ast.push_str(action.text);
       } else if (action.type === "PUSH") {
-        ast.push(action.rule);
+        ast.push(action.rule, action.matched);
       } else if (action.type === "POP") {
-        ast.pop();
+        ast.pop(action.matched);
       } else if (action.type === "REGEX") {
         ast.push_regex(action.rule, action.match);
       }
     }
     return ast.render();
   }
-  _helper(text, start, path) {
+  _helper(text, start, path, multiline = false) {
     if (this.min_skips !== null && path.num_skips > this.min_skips) {
       return [];
     }
@@ -149,23 +171,37 @@ var TextStyler = class {
     const paths = [];
     for (const next of nexts) {
       let new_start2 = next.position;
-      let new_path2 = path.copy_and_push({ type: "TEXT", text: text.slice(start, new_start2) });
+      let text_part2 = text.slice(start, new_start2);
+      if (!multiline && path.stack.length > 0 && text_part2.includes("\n")) {
+        continue;
+      }
+      let new_path2 = path.copy_and_push({ type: "TEXT", text: text_part2 });
       if (next.type === "REGEX") {
         new_start2 += next.match[0].length;
         new_path2 = new_path2.copy_and_push({ type: "REGEX", rule: next.rule, match: next.match });
       } else {
-        new_start2 += next.is_start ? next.rule.get_start().length : next.rule.get_end().length;
+        new_start2 += next.matched.length;
         if (next.is_end && path.stack.length > 0 && path.peek() === next.rule) {
-          new_path2 = new_path2.copy_and_push({ type: "POP" });
+          new_path2 = new_path2.copy_and_push({ type: "POP", matched: next.matched });
         } else if (next.is_start) {
-          new_path2 = new_path2.copy_and_push({ type: "PUSH", rule: next.rule });
+          if (next.matched.length === 0) continue;
+          new_path2 = new_path2.copy_and_push({ type: "PUSH", rule: next.rule, matched: next.matched });
+        } else {
+          continue;
         }
       }
-      paths.push(...this._helper(text, new_start2, new_path2));
+      paths.push(...this._helper(text, new_start2, new_path2, multiline));
     }
     const new_start = nexts[nexts.length - 1].position + 1;
-    const new_path = path.copy_and_push({ type: "TEXT", text: text.slice(start, new_start) }, 1);
-    paths.push(...this._helper(text, new_start, new_path));
+    const text_part = text.slice(start, new_start);
+    if (!multiline && path.stack.length > 0 && text_part.includes("\n")) {
+      return paths;
+    }
+    let penalty = 1;
+    const allZero = nexts.every((n) => n.type === "REGEX" ? n.match[0].length === 0 : n.matched.length === 0);
+    if (allZero) penalty = 0;
+    const new_path = path.copy_and_push({ type: "TEXT", text: text_part }, penalty);
+    paths.push(...this._helper(text, new_start, new_path, multiline));
     return paths;
   }
   _find_next(text, start) {
@@ -179,10 +215,18 @@ var TextStyler = class {
             nexts.push({ type: "REGEX", rule: marking, position: index, match });
           }
         } else if (!is_escaped) {
-          const is_start = text.startsWith(marking.get_start(), index);
-          const is_end = text.startsWith(marking.get_end(), index);
-          if (is_start || is_end) {
-            nexts.push({ type: "STYLE", rule: marking, position: index, is_start, is_end });
+          const startMatch = marking.get_start_match(text, index);
+          const endMatch = marking.get_end_match(text, index);
+          if (startMatch !== null || endMatch !== null) {
+            const matched = startMatch !== null ? startMatch : endMatch || "";
+            nexts.push({
+              type: "STYLE",
+              rule: marking,
+              position: index,
+              is_start: startMatch !== null,
+              is_end: endMatch !== null,
+              matched
+            });
           }
         }
       }
@@ -194,11 +238,33 @@ var TextStyler = class {
     return [];
   }
 };
+function groupBy(children) {
+  const groupedChildren = [];
+  for (const child of children) {
+    const rule = child instanceof SyntaxTreeNode && child.rule instanceof TextStylerRule ? child.rule : null;
+    if (groupedChildren.length === 0) {
+      groupedChildren.push({ rule, items: [child] });
+    } else {
+      const lastGroup = groupedChildren[groupedChildren.length - 1];
+      if (lastGroup.rule === rule) {
+        lastGroup.items.push(child);
+      } else {
+        groupedChildren.push({ rule, items: [child] });
+      }
+    }
+  }
+  return groupedChildren;
+}
 var SyntaxTree = class {
-  children = [];
-  curr = null;
-  push(rule) {
-    const new_node = new SyntaxTreeNode(this.curr, rule);
+  root;
+  curr;
+  constructor() {
+    const dummyRule = new TextStylerRule("", (c) => c);
+    this.root = new SyntaxTreeNode(null, dummyRule, null, "");
+    this.curr = this.root;
+  }
+  push(rule, matched) {
+    const new_node = new SyntaxTreeNode(this.curr, rule, null, matched);
     this._push(new_node);
     this.curr = new_node;
   }
@@ -212,27 +278,25 @@ var SyntaxTree = class {
     }
   }
   _push(node) {
-    if (this.curr === null) {
-      this.children.push(node);
-    } else {
-      this.curr.push(node);
-    }
+    this.curr.push(node);
   }
-  pop() {
-    if (this.curr === null) {
+  pop(matched) {
+    if (this.curr === this.root || this.curr.parent === null) {
       throw new Error("Attempted to pop() when already at root");
     }
+    this.curr.end_match = matched;
     this.curr = this.curr.parent;
   }
   render() {
-    return this.children.flatMap((child) => typeof child === "string" ? [child] : child.render());
+    return this.root.render();
   }
 };
 var SyntaxTreeNode = class {
-  constructor(parent, rule, match = null) {
+  constructor(parent, rule, match = null, start_match = "") {
     this.parent = parent;
     this.rule = rule;
     this.match = match;
+    this.start_match = start_match;
     if (parent !== null && parent.rule instanceof TextStylerRule) {
       this.path = [...parent.path, parent.rule];
     }
@@ -240,24 +304,53 @@ var SyntaxTreeNode = class {
   parent;
   rule;
   match;
+  start_match;
   children = [];
   path = [];
+  end_match = "";
   push(child) {
     this.children.push(child);
   }
   render() {
     if (this.rule instanceof TextStylerRule) {
       const rule = this.rule;
-      const inner = this.children.flatMap(
-        (child) => typeof child === "string" ? [child] : child.render()
-      );
-      if (this._should_print_raw()) {
-        return [rule.get_start(), ...inner, rule.get_end()];
+      const inner = [];
+      for (const group of groupBy(this.children)) {
+        const renderedItems = group.items.flatMap(
+          (child) => typeof child === "string" ? [child] : child.render()
+        );
+        if (group.rule && group.rule.wrap_consecutive) {
+          inner.push(group.rule.wrap_consecutive(renderedItems));
+        } else {
+          inner.push(...renderedItems);
+        }
       }
-      const [outer_prefix, inner_prefix, inner_suffix, outer_suffix] = rule.get_wrappers();
-      const wrappedInner = [...inner_prefix ? [inner_prefix] : [], ...inner, ...inner_suffix ? [inner_suffix] : []];
+      if (this.parent === null) {
+        return inner;
+      }
+      if (this._should_print_raw()) {
+        const rawResult = [];
+        if (this.start_match) rawResult.push(this.start_match);
+        rawResult.push(...inner);
+        if (this.end_match) rawResult.push(this.end_match);
+        return rawResult;
+      }
+      let outer_prefix = "", inner_prefix = "", inner_suffix = "", outer_suffix = "";
+      if (rule.consume_start === "INSIDE" /* INSIDE */) outer_prefix = this.start_match;
+      else if (rule.consume_start === "OUTSIDE" /* OUTSIDE */) inner_prefix = this.start_match;
+      if (rule.consume_end === "INSIDE" /* INSIDE */) outer_suffix = this.end_match;
+      else if (rule.consume_end === "OUTSIDE" /* OUTSIDE */) inner_suffix = this.end_match;
+      const wrappedInner = [
+        ...inner_prefix ? [inner_prefix] : [],
+        ...inner,
+        ...inner_suffix ? [inner_suffix] : []
+      ];
       const result = rule.transform(wrappedInner);
-      return [...outer_prefix ? [outer_prefix] : [], result, ...outer_suffix ? [outer_suffix] : []];
+      return [
+        ...outer_prefix ? [outer_prefix] : [],
+        result,
+        ...outer_suffix ? [outer_suffix] : []
+      ];
     } else if (this.rule instanceof TextStylerRegexRule) {
       return [this.rule.transform(this.match)];
     }
@@ -273,10 +366,10 @@ var SyntaxTreeNode = class {
       return false;
     }
     if (allow_inner === "DISALLOW_DIRECT" /* DISALLOW_DIRECT */) {
-      return this.parent.rule === this.rule;
+      return this.parent.rule === rule;
     }
     if (allow_inner === "DISALLOW_ANCESTOR" /* DISALLOW_ANCESTOR */) {
-      return this.path.includes(this.rule);
+      return this.path.includes(rule);
     }
     return false;
   }
