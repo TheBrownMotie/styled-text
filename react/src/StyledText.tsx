@@ -9,6 +9,7 @@ interface Props {
 
 export const StyledText = ({ text, config, multiline = false }: Props) => {
   const styler = useMemo(() => new TextStyler<React.ReactNode>(config), [config]);
-  const nodes = styler.processText(text, multiline);
+  // We want htmlEscape to be false because React will do the escaping for us already
+  const nodes = styler.processText(text, multiline, false);
   return <>{nodes}</>;
 };

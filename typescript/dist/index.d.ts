@@ -18,33 +18,33 @@ declare class TextStylerRule<T> {
     start: string | RegExp;
     transform: (children: (T | string)[]) => T;
     end: string | RegExp | null;
-    wrap_consecutive: ((children: (T | string)[]) => T) | null;
-    consume_start: ConsumptionStyle;
-    consume_end: ConsumptionStyle;
-    allow_inner: InnerStyle;
+    wrapConsecutive: ((children: (T | string)[]) => T) | null;
+    consumeStart: ConsumptionStyle;
+    consumeEnd: ConsumptionStyle;
+    allowInner: InnerStyle;
     private _startRegex;
     private _endRegex;
     constructor(start: string | RegExp, transform: (children: (T | string)[]) => T, options?: {
         end?: string | RegExp | null;
-        wrap_consecutive?: (children: (T | string)[]) => T;
-        consume_start?: ConsumptionStyle;
-        consume_end?: ConsumptionStyle;
-        allow_inner?: InnerStyle;
+        wrapConsecutive?: (children: (T | string)[]) => T;
+        consumeStart?: ConsumptionStyle;
+        consumeEnd?: ConsumptionStyle;
+        allowInner?: InnerStyle;
     });
-    get_start_match(text: string, pos: number): string | null;
-    get_end_match(text: string, pos: number): string | null;
-    get_start(): string;
-    get_end(): string;
+    getStartMatch(text: string, pos: number): string | null;
+    getEndMatch(text: string, pos: number): string | null;
+    getStart(): string;
+    getEnd(): string;
 }
 type RuleType<T> = TextStylerRule<T> | TextStylerRegexRule<T>;
 declare class TextStyler<T> {
     rule: RuleType<T>[];
-    private min_skips;
+    private minSkips;
     constructor(rule: RuleType<T>[]);
-    processText(text: string, multiline?: boolean): (T | string)[];
-    private _process_text;
+    processText(text: string, multiline?: boolean, escapeHtml?: boolean): (T | string)[];
+    private _processText;
     private _helper;
-    private _find_next;
+    private _findNext;
 }
 
-export { type RuleType, TextStyler, TextStylerRegexRule, TextStylerRule, htmlTag };
+export { ConsumptionStyle, InnerStyle, type RuleType, TextStyler, TextStylerRegexRule, TextStylerRule, htmlTag };

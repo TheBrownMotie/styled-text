@@ -81,8 +81,8 @@ test("test_empty_bold3", () => {
 test("test_empty_bold4", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong", undefined, true), {
-      consume_start: ConsumptionStyle.OUTSIDE,
-      consume_end: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
+      consumeEnd: ConsumptionStyle.OUTSIDE,
     }),
   ]);
   expect(text_styler.processText("**").join("")).toBe("<strong>**</strong>");
@@ -91,8 +91,8 @@ test("test_empty_bold4", () => {
 test("test_empty_bold5", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong", undefined, true), {
-      consume_start: ConsumptionStyle.INSIDE,
-      consume_end: ConsumptionStyle.INSIDE,
+      consumeStart: ConsumptionStyle.INSIDE,
+      consumeEnd: ConsumptionStyle.INSIDE,
     }),
   ]);
   expect(text_styler.processText("**").join("")).toBe("*<strong />*");
@@ -259,7 +259,7 @@ test("test_start_and_end_inside_start_and_end_disallow_direct", () => {
     new TextStylerRule("_", htmlTag("em")),
     new TextStylerRule("<!", htmlTag("span", { class: "spoiler" }), {
       end: "!>",
-      allow_inner: InnerStyle.DISALLOW_DIRECT,
+      allowInner: InnerStyle.DISALLOW_DIRECT,
     }),
   ]);
   expect(
@@ -276,7 +276,7 @@ test("test_start_and_end_inside_start_and_end_disallow_ancestors", () => {
     new TextStylerRule("_", htmlTag("em")),
     new TextStylerRule("<!", htmlTag("span", { class: "spoiler" }), {
       end: "!>",
-      allow_inner: InnerStyle.DISALLOW_ANCESTOR,
+      allowInner: InnerStyle.DISALLOW_ANCESTOR,
     }),
   ]);
   expect(
@@ -301,7 +301,7 @@ test("test_multiquote_preserving_start_marking", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule(">", htmlTag("blockquote"), {
       end: "\n",
-      consume_start: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
     }),
   ]);
   expect(
@@ -315,8 +315,8 @@ test("test_multiquote_preserving_all", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule(">", htmlTag("blockquote"), {
       end: "\n",
-      consume_start: ConsumptionStyle.OUTSIDE,
-      consume_end: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
+      consumeEnd: ConsumptionStyle.OUTSIDE,
     }),
   ]);
   expect(
@@ -348,20 +348,20 @@ test("test_non_html_transform", () => {
 test("test_keep_all_markings_outside", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong"), {
-      consume_start: ConsumptionStyle.OUTSIDE,
-      consume_end: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
+      consumeEnd: ConsumptionStyle.OUTSIDE,
     }),
     new TextStylerRule("_", htmlTag("em"), {
-      consume_start: ConsumptionStyle.OUTSIDE,
-      consume_end: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
+      consumeEnd: ConsumptionStyle.OUTSIDE,
     }),
     new TextStylerRule("~~", htmlTag("del"), {
-      consume_start: ConsumptionStyle.OUTSIDE,
-      consume_end: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
+      consumeEnd: ConsumptionStyle.OUTSIDE,
     }),
     new TextStylerRule("~", htmlTag("sub"), {
-      consume_start: ConsumptionStyle.OUTSIDE,
-      consume_end: ConsumptionStyle.OUTSIDE,
+      consumeStart: ConsumptionStyle.OUTSIDE,
+      consumeEnd: ConsumptionStyle.OUTSIDE,
     }),
   ]);
 
@@ -377,20 +377,20 @@ test("test_keep_all_markings_outside", () => {
 test("test_keep_all_markings_inside", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong"), {
-      consume_start: ConsumptionStyle.INSIDE,
-      consume_end: ConsumptionStyle.INSIDE,
+      consumeStart: ConsumptionStyle.INSIDE,
+      consumeEnd: ConsumptionStyle.INSIDE,
     }),
     new TextStylerRule("_", htmlTag("em"), {
-      consume_start: ConsumptionStyle.INSIDE,
-      consume_end: ConsumptionStyle.INSIDE,
+      consumeStart: ConsumptionStyle.INSIDE,
+      consumeEnd: ConsumptionStyle.INSIDE,
     }),
     new TextStylerRule("~~", htmlTag("del"), {
-      consume_start: ConsumptionStyle.INSIDE,
-      consume_end: ConsumptionStyle.INSIDE,
+      consumeStart: ConsumptionStyle.INSIDE,
+      consumeEnd: ConsumptionStyle.INSIDE,
     }),
     new TextStylerRule("~", htmlTag("sub"), {
-      consume_start: ConsumptionStyle.INSIDE,
-      consume_end: ConsumptionStyle.INSIDE,
+      consumeStart: ConsumptionStyle.INSIDE,
+      consumeEnd: ConsumptionStyle.INSIDE,
     }),
   ]);
 
@@ -405,22 +405,22 @@ test("test_keep_all_markings_inside", () => {
 
 test("test_regex", () => {
   const text_styler = new TextStyler<string>([
-    new TextStylerRegexRule(/&gt;&gt;(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`),
+    new TextStylerRegexRule(/>>(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`),
   ]);
 
   expect(text_styler.processText("This is an imageboard style >>12345 link").join("")).toBe(
-    "This is an imageboard style <link id='12345'>&gt;&gt;12345</link> link",
+    "This is an imageboard style <link id='12345'>>>12345</link> link",
   );
 });
 
 test("test_regex_wrapped_with_strong", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong")),
-    new TextStylerRegexRule(/&gt;&gt;(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`),
+    new TextStylerRegexRule(/>>(\d+)/, (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`),
   ]);
 
   expect(text_styler.processText("This is an imageboard *style >>12345 link* that is bolded").join("")).toBe(
-    "This is an imageboard <strong>style <link id='12345'>&gt;&gt;12345</link> link</strong> that is bolded",
+    "This is an imageboard <strong>style <link id='12345'>>>12345</link> link</strong> that is bolded",
   );
 });
 
@@ -428,13 +428,13 @@ test("test_regex_wrapped_with_strong_inside_it1", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong")),
     new TextStylerRegexRule(
-      /&gt;&gt;([*\d]+)/,
+      />>([*\d]+)/,
       (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`,
     ),
   ]);
 
   expect(text_styler.processText("This is a regex unaffected >>12*3*45 by *asterisks* inside it").join("")).toBe(
-    "This is a regex unaffected <link id='12*3*45'>&gt;&gt;12*3*45</link> by <strong>asterisks</strong> inside it",
+    "This is a regex unaffected <link id='12*3*45'>>>12*3*45</link> by <strong>asterisks</strong> inside it",
   );
 });
 
@@ -456,13 +456,13 @@ test("test_regex_wrapped_with_strong_inside_it3", () => {
   const text_styler = new TextStyler<string>([
     new TextStylerRule("*", htmlTag("strong")),
     new TextStylerRegexRule(
-      /&gt;&gt;([*\d]+)/,
+      />>([*\d]+)/,
       (match: RegExpMatchArray) => `<link id='${match[1]}'>${match[0]}</link>`,
     ),
   ]);
 
   expect(text_styler.processText("This is a regex unbroken by an asterisk >>12*345 that came* second").join("")).toBe(
-    "This is a regex unbroken by an asterisk <link id='12*345'>&gt;&gt;12*345</link> that came* second",
+    "This is a regex unbroken by an asterisk <link id='12*345'>>>12*345</link> that came* second",
   );
 });
 
@@ -568,7 +568,7 @@ test("test_wrap", () => {
         "- ",
         htmlTag("li"), {
         end: "\n",
-        wrap_consecutive: htmlTag("ul"),
+        wrapConsecutive: htmlTag("ul"),
       })
     ]
   );
@@ -587,13 +587,13 @@ test("test_wrap_complex", () => {
         "- ",
         htmlTag("li"), {
         end: "\n",
-        wrap_consecutive: htmlTag("ul"),
+        wrapConsecutive: htmlTag("ul"),
       }),
       new TextStylerRule(
         "> ",
         htmlTag("p"), {
         end: "\n",
-        wrap_consecutive: htmlTag("blockquote"),
+        wrapConsecutive: htmlTag("blockquote"),
       }),
     ]
   )
@@ -643,7 +643,7 @@ test('test_regex_wrap_consecutive', () => {
     new TextStylerRule(
       /^\s*-\s+/m,
       htmlTag('li'),
-      { end: "\n", wrap_consecutive: htmlTag('ul') }
+      { end: "\n", wrapConsecutive: htmlTag('ul') }
     )
   ]);
   const message = " - first\n    - second\n";
@@ -655,9 +655,9 @@ test('test_regex_wrap_consecutive', () => {
 test('test_regex_escaped_html_interaction', () => {
   const textStyler = new TextStyler([
     new TextStylerRule(
-      /&lt;[a-z]+&gt;/,
+      /<[a-z]+>/,
       htmlTag('div'),
-      { end: /&lt;\/[a-z]+&gt;/ }
+      { end: /<\/[a-z]+>/ }
     )
   ]);
   expect(textStyler.processText("<test>hello</test>").join('')).toBe(
@@ -668,7 +668,7 @@ test('test_regex_escaped_html_interaction', () => {
 test('test_regex_anchors_and_multiline', () => {
   const textStyler = new TextStyler([
     new TextStylerRule(
-      /^&gt;&gt;&gt; /m,
+      /^>>> /m,
       htmlTag('blockquote'),
       { end: /$/m }
     )
@@ -687,8 +687,8 @@ test('test_regex_consume_styles', () => {
       htmlTag('code'),
       {
           end: /}+/,
-          consume_start: ConsumptionStyle.OUTSIDE,
-          consume_end: ConsumptionStyle.OUTSIDE
+          consumeStart: ConsumptionStyle.OUTSIDE,
+          consumeEnd: ConsumptionStyle.OUTSIDE
       }
     )
   ]);
@@ -702,7 +702,7 @@ test('test_regex_disallow_direct', () => {
     new TextStylerRule(
       /\[del\]/,
       htmlTag('del'),
-      { end: /\[\/del\]/, allow_inner: InnerStyle.DISALLOW_DIRECT }
+      { end: /\[\/del\]/, allowInner: InnerStyle.DISALLOW_DIRECT }
     )
   ]);
   expect(textStyler.processText("[del]strike [del]nested[/del] out[/del]").join('')).toBe(
@@ -715,7 +715,7 @@ test('test_regex_disallow_ancestors', () => {
     new TextStylerRule(
       /\[strong\]/,
       htmlTag('strong'),
-      { end: /\[\/strong\]/, allow_inner: InnerStyle.DISALLOW_ANCESTOR }
+      { end: /\[\/strong\]/, allowInner: InnerStyle.DISALLOW_ANCESTOR }
     ),
     new TextStylerRule("_", htmlTag('em'))
   ]);

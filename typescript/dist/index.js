@@ -1,4 +1,16 @@
 // src/text_styler.ts
+var ConsumptionStyle = /* @__PURE__ */ ((ConsumptionStyle2) => {
+  ConsumptionStyle2["REPLACE"] = "REPLACE";
+  ConsumptionStyle2["OUTSIDE"] = "OUTSIDE";
+  ConsumptionStyle2["INSIDE"] = "INSIDE";
+  return ConsumptionStyle2;
+})(ConsumptionStyle || {});
+var InnerStyle = /* @__PURE__ */ ((InnerStyle2) => {
+  InnerStyle2["ALLOW"] = "ALLOW";
+  InnerStyle2["DISALLOW_DIRECT"] = "DISALLOW_DIRECT";
+  InnerStyle2["DISALLOW_ANCESTOR"] = "DISALLOW_ANCESTOR";
+  return InnerStyle2;
+})(InnerStyle || {});
 function htmlEscape(text) {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
@@ -25,20 +37,20 @@ var TextStylerRule = class {
   start;
   transform;
   end;
-  wrap_consecutive;
-  consume_start;
-  consume_end;
-  allow_inner;
+  wrapConsecutive;
+  consumeStart;
+  consumeEnd;
+  allowInner;
   _startRegex = null;
   _endRegex = null;
   constructor(start, transform, options) {
     this.start = start;
     this.transform = transform;
     this.end = options?.end ?? null;
-    this.wrap_consecutive = options?.wrap_consecutive ?? null;
-    this.consume_start = options?.consume_start ?? "REPLACE" /* REPLACE */;
-    this.consume_end = options?.consume_end ?? "REPLACE" /* REPLACE */;
-    this.allow_inner = options?.allow_inner ?? "ALLOW" /* ALLOW */;
+    this.wrapConsecutive = options?.wrapConsecutive ?? null;
+    this.consumeStart = options?.consumeStart ?? "REPLACE" /* REPLACE */;
+    this.consumeEnd = options?.consumeEnd ?? "REPLACE" /* REPLACE */;
+    this.allowInner = options?.allowInner ?? "ALLOW" /* ALLOW */;
     if (this.start instanceof RegExp) {
       this._startRegex = new RegExp(this.start.source, this.start.flags.includes("g") ? this.start.flags : this.start.flags + "g");
     }
@@ -46,9 +58,9 @@ var TextStylerRule = class {
       this._endRegex = new RegExp(this.end.source, this.end.flags.includes("g") ? this.end.flags : this.end.flags + "g");
     }
   }
-  get_start_match(text, pos) {
+  getStartMatch(text, pos) {
     if (typeof this.start === "string") {
-      const startStr = this.get_start();
+      const startStr = this.getStart();
       return text.startsWith(startStr, pos) ? startStr : null;
     }
     if (this._startRegex) {
@@ -58,11 +70,10 @@ var TextStylerRule = class {
     }
     return null;
   }
-  get_end_match(text, pos) {
+  getEndMatch(text, pos) {
     const end = this.end !== null ? this.end : this.start;
     if (typeof end === "string") {
-      const endStr = htmlEscape(end);
-      return text.startsWith(endStr, pos) ? endStr : null;
+      return text.startsWith(end, pos) ? end : null;
     }
     const regex = this.end !== null ? this._endRegex : this._startRegex;
     if (regex) {
@@ -72,55 +83,55 @@ var TextStylerRule = class {
     }
     return null;
   }
-  get_start() {
-    return typeof this.start === "string" ? htmlEscape(this.start) : "";
+  getStart() {
+    return typeof this.start === "string" ? this.start : "";
   }
-  get_end() {
+  getEnd() {
     const end = this.end !== null ? this.end : this.start;
-    return typeof end === "string" ? htmlEscape(end) : "";
+    return typeof end === "string" ? end : "";
   }
 };
 var Path = class _Path {
-  constructor(actions = [], stack = [], num_skips = 0) {
+  constructor(actions = [], stack = [], numSkips = 0) {
     this.actions = actions;
     this.stack = stack;
-    this.num_skips = num_skips;
+    this.numSkips = numSkips;
   }
   actions;
   stack;
-  num_skips;
-  get num_pushes() {
+  numSkips;
+  get numPushes() {
     return this.actions.filter((a) => a.type === "PUSH" || a.type === "REGEX").length;
   }
   peek() {
     return this.stack.length > 0 ? this.stack[this.stack.length - 1] : null;
   }
-  copy_and_push(action, extra_skip = 0) {
-    const new_actions = [...this.actions];
+  copyAndPush(action, extraSkip = 0) {
+    const newActions = [...this.actions];
     if (action.type !== "TEXT" || action.text !== "") {
-      new_actions.push(action);
+      newActions.push(action);
     }
-    let new_stack = this.stack;
+    let newStack = this.stack;
     if (action.type === "PUSH") {
-      new_stack = [...this.stack, action.rule];
+      newStack = [...this.stack, action.rule];
     } else if (action.type === "POP") {
-      new_stack = this.stack.slice(0, -1);
+      newStack = this.stack.slice(0, -1);
     }
-    return new _Path(new_actions, new_stack, this.num_skips + extra_skip);
+    return new _Path(newActions, newStack, this.numSkips + extraSkip);
   }
 };
 var TextStyler = class {
   rule;
-  min_skips = null;
+  minSkips = null;
   constructor(rule) {
     this.rule = rule;
   }
-  processText(text, multiline = false) {
-    this.min_skips = null;
-    const needs_cleanup = !text.endsWith("\n");
-    const normalizedText = needs_cleanup ? text + "\n" : text;
-    const result = this._process_text(normalizedText, multiline);
-    if (needs_cleanup && result.length > 0) {
+  processText(text, multiline = false, escapeHtml = true) {
+    this.minSkips = null;
+    const needsCleanup = !text.endsWith("\n");
+    const normalizedText = needsCleanup ? text + "\n" : text;
+    const result = this._processText(normalizedText, multiline, escapeHtml);
+    if (needsCleanup && result.length > 0) {
       const last = result[result.length - 1];
       if (typeof last === "string") {
         result[result.length - 1] = last.replace(/\n$/, "");
@@ -128,85 +139,84 @@ var TextStyler = class {
     }
     return result;
   }
-  _process_text(text, multiline = false) {
+  _processText(text, multiline = false, escapeHtml = true) {
     if (text === "") {
       return [];
     }
-    text = htmlEscape(text);
     const paths = this._helper(text, 0, new Path(), multiline);
-    const best_path = paths.reduce((best, curr) => {
-      if (curr.num_skips < best.num_skips) return curr;
-      if (curr.num_skips > best.num_skips) return best;
-      return curr.num_pushes < best.num_pushes ? curr : best;
+    const bestPath = paths.reduce((best, curr) => {
+      if (curr.numSkips < best.numSkips) return curr;
+      if (curr.numSkips > best.numSkips) return best;
+      return curr.numPushes < best.numPushes ? curr : best;
     });
-    const ast = new SyntaxTree();
-    for (const action of best_path.actions) {
+    const ast = new SyntaxTree(escapeHtml);
+    for (const action of bestPath.actions) {
       if (action.type === "TEXT") {
-        ast.push_str(action.text);
+        ast.pushString(action.text);
       } else if (action.type === "PUSH") {
         ast.push(action.rule, action.matched);
       } else if (action.type === "POP") {
         ast.pop(action.matched);
       } else if (action.type === "REGEX") {
-        ast.push_regex(action.rule, action.match);
+        ast.pushRegex(action.rule, action.match);
       }
     }
     return ast.render();
   }
   _helper(text, start, path, multiline = false) {
-    if (this.min_skips !== null && path.num_skips > this.min_skips) {
+    if (this.minSkips !== null && path.numSkips > this.minSkips) {
       return [];
     }
     if (text === "") {
       return [new Path()];
     }
-    const nexts = this._find_next(text, start);
+    const nexts = this._findNext(text, start);
     if (start >= text.length || nexts.length === 0) {
       if (path.stack.length > 0) {
         return [];
       }
-      this.min_skips = Math.min(this.min_skips ?? path.num_skips, path.num_skips);
-      return [path.copy_and_push({ type: "TEXT", text: text.slice(start) })];
+      this.minSkips = Math.min(this.minSkips ?? path.numSkips, path.numSkips);
+      return [path.copyAndPush({ type: "TEXT", text: text.slice(start) })];
     }
     const paths = [];
     for (const next of nexts) {
-      let new_start2 = next.position;
-      let text_part2 = text.slice(start, new_start2);
-      if (!multiline && path.stack.length > 0 && text_part2.includes("\n")) {
+      let newStart2 = next.position;
+      let textPart2 = text.slice(start, newStart2);
+      if (!multiline && path.stack.length > 0 && textPart2.includes("\n")) {
         continue;
       }
-      let new_path2 = path.copy_and_push({ type: "TEXT", text: text_part2 });
+      let newPath2 = path.copyAndPush({ type: "TEXT", text: textPart2 });
       if (next.type === "REGEX") {
-        new_start2 += next.match[0].length;
-        new_path2 = new_path2.copy_and_push({ type: "REGEX", rule: next.rule, match: next.match });
+        newStart2 += next.match[0].length;
+        newPath2 = newPath2.copyAndPush({ type: "REGEX", rule: next.rule, match: next.match });
       } else {
-        new_start2 += next.matched.length;
-        if (next.is_end && path.stack.length > 0 && path.peek() === next.rule) {
-          new_path2 = new_path2.copy_and_push({ type: "POP", matched: next.matched });
-        } else if (next.is_start) {
+        newStart2 += next.matched.length;
+        if (next.isEnd && path.stack.length > 0 && path.peek() === next.rule) {
+          newPath2 = newPath2.copyAndPush({ type: "POP", matched: next.matched });
+        } else if (next.isStart) {
           if (next.matched.length === 0) continue;
-          new_path2 = new_path2.copy_and_push({ type: "PUSH", rule: next.rule, matched: next.matched });
+          newPath2 = newPath2.copyAndPush({ type: "PUSH", rule: next.rule, matched: next.matched });
         } else {
           continue;
         }
       }
-      paths.push(...this._helper(text, new_start2, new_path2, multiline));
+      paths.push(...this._helper(text, newStart2, newPath2, multiline));
     }
-    const new_start = nexts[nexts.length - 1].position + 1;
-    const text_part = text.slice(start, new_start);
-    if (!multiline && path.stack.length > 0 && text_part.includes("\n")) {
+    const newStart = nexts[nexts.length - 1].position + 1;
+    const textPart = text.slice(start, newStart);
+    if (!multiline && path.stack.length > 0 && textPart.includes("\n")) {
       return paths;
     }
     let penalty = 1;
     const allZero = nexts.every((n) => n.type === "REGEX" ? n.match[0].length === 0 : n.matched.length === 0);
     if (allZero) penalty = 0;
-    const new_path = path.copy_and_push({ type: "TEXT", text: text_part }, penalty);
-    paths.push(...this._helper(text, new_start, new_path, multiline));
+    const newPath = path.copyAndPush({ type: "TEXT", text: textPart }, penalty);
+    paths.push(...this._helper(text, newStart, newPath, multiline));
     return paths;
   }
-  _find_next(text, start) {
+  _findNext(text, start) {
     const nexts = [];
-    let is_escaped = false;
+    let isEscaped = false;
     for (let index = start; index < text.length; index++) {
       for (const marking of this.rule) {
         if (marking instanceof TextStylerRegexRule) {
@@ -214,23 +224,23 @@ var TextStyler = class {
           if (match && match.index === 0) {
             nexts.push({ type: "REGEX", rule: marking, position: index, match });
           }
-        } else if (!is_escaped) {
-          const startMatch = marking.get_start_match(text, index);
-          const endMatch = marking.get_end_match(text, index);
+        } else if (!isEscaped) {
+          const startMatch = marking.getStartMatch(text, index);
+          const endMatch = marking.getEndMatch(text, index);
           if (startMatch !== null || endMatch !== null) {
             const matched = startMatch !== null ? startMatch : endMatch || "";
             nexts.push({
               type: "STYLE",
               rule: marking,
               position: index,
-              is_start: startMatch !== null,
-              is_end: endMatch !== null,
+              isStart: startMatch !== null,
+              isEnd: endMatch !== null,
               matched
             });
           }
         }
       }
-      is_escaped = text[index] === "\\" && !is_escaped;
+      isEscaped = text[index] === "\\" && !isEscaped;
       if (nexts.length > 0) {
         return nexts;
       }
@@ -256,23 +266,25 @@ function groupBy(children) {
   return groupedChildren;
 }
 var SyntaxTree = class {
-  root;
-  curr;
-  constructor() {
+  constructor(escapeHtml = true) {
+    this.escapeHtml = escapeHtml;
     const dummyRule = new TextStylerRule("", (c) => c);
-    this.root = new SyntaxTreeNode(null, dummyRule, null, "");
+    this.root = new SyntaxTreeNode(null, dummyRule, null, "", escapeHtml);
     this.curr = this.root;
   }
+  escapeHtml;
+  root;
+  curr;
   push(rule, matched) {
-    const new_node = new SyntaxTreeNode(this.curr, rule, null, matched);
-    this._push(new_node);
-    this.curr = new_node;
+    const node = new SyntaxTreeNode(this.curr, rule, null, matched, this.escapeHtml);
+    this._push(node);
+    this.curr = node;
   }
-  push_regex(rule, match) {
-    const new_node = new SyntaxTreeNode(this.curr, rule, match);
-    this._push(new_node);
+  pushRegex(rule, match) {
+    const node = new SyntaxTreeNode(this.curr, rule, match);
+    this._push(node);
   }
-  push_str(text) {
+  pushString(text) {
     if (text) {
       this._push(text.replace(/\\(.)/gs, "$1"));
     }
@@ -284,7 +296,7 @@ var SyntaxTree = class {
     if (this.curr === this.root || this.curr.parent === null) {
       throw new Error("Attempted to pop() when already at root");
     }
-    this.curr.end_match = matched;
+    this.curr.endMatch = matched;
     this.curr = this.curr.parent;
   }
   render() {
@@ -292,11 +304,12 @@ var SyntaxTree = class {
   }
 };
 var SyntaxTreeNode = class {
-  constructor(parent, rule, match = null, start_match = "") {
+  constructor(parent, rule, match = null, startMatch = "", escapeHtml = true) {
     this.parent = parent;
     this.rule = rule;
     this.match = match;
-    this.start_match = start_match;
+    this.startMatch = startMatch;
+    this.escapeHtml = escapeHtml;
     if (parent !== null && parent.rule instanceof TextStylerRule) {
       this.path = [...parent.path, parent.rule];
     }
@@ -304,12 +317,16 @@ var SyntaxTreeNode = class {
   parent;
   rule;
   match;
-  start_match;
+  startMatch;
+  escapeHtml;
   children = [];
   path = [];
-  end_match = "";
+  endMatch = "";
   push(child) {
     this.children.push(child);
+  }
+  escape(text) {
+    return this.escapeHtml ? htmlEscape(text) : text;
   }
   render() {
     if (this.rule instanceof TextStylerRule) {
@@ -317,10 +334,10 @@ var SyntaxTreeNode = class {
       const inner = [];
       for (const group of groupBy(this.children)) {
         const renderedItems = group.items.flatMap(
-          (child) => typeof child === "string" ? [child] : child.render()
+          (child) => typeof child === "string" ? [this.escape(child)] : child.render()
         );
-        if (group.rule && group.rule.wrap_consecutive) {
-          inner.push(group.rule.wrap_consecutive(renderedItems));
+        if (group.rule && group.rule.wrapConsecutive) {
+          inner.push(group.rule.wrapConsecutive(renderedItems));
         } else {
           inner.push(...renderedItems);
         }
@@ -328,53 +345,55 @@ var SyntaxTreeNode = class {
       if (this.parent === null) {
         return inner;
       }
-      if (this._should_print_raw()) {
+      if (this._shouldPrintRaw()) {
         const rawResult = [];
-        if (this.start_match) rawResult.push(this.start_match);
+        if (this.startMatch) rawResult.push(this.escape(this.startMatch));
         rawResult.push(...inner);
-        if (this.end_match) rawResult.push(this.end_match);
+        if (this.endMatch) rawResult.push(this.escape(this.endMatch));
         return rawResult;
       }
-      let outer_prefix = "", inner_prefix = "", inner_suffix = "", outer_suffix = "";
-      if (rule.consume_start === "INSIDE" /* INSIDE */) outer_prefix = this.start_match;
-      else if (rule.consume_start === "OUTSIDE" /* OUTSIDE */) inner_prefix = this.start_match;
-      if (rule.consume_end === "INSIDE" /* INSIDE */) outer_suffix = this.end_match;
-      else if (rule.consume_end === "OUTSIDE" /* OUTSIDE */) inner_suffix = this.end_match;
+      let outerPrefix = "", innerPrefix = "", innerSuffix = "", outerSuffix = "";
+      if (rule.consumeStart === "INSIDE" /* INSIDE */) outerPrefix = this.escape(this.startMatch);
+      else if (rule.consumeStart === "OUTSIDE" /* OUTSIDE */) innerPrefix = this.escape(this.startMatch);
+      if (rule.consumeEnd === "INSIDE" /* INSIDE */) outerSuffix = this.escape(this.endMatch);
+      else if (rule.consumeEnd === "OUTSIDE" /* OUTSIDE */) innerSuffix = this.escape(this.endMatch);
       const wrappedInner = [
-        ...inner_prefix ? [inner_prefix] : [],
+        ...innerPrefix ? [innerPrefix] : [],
         ...inner,
-        ...inner_suffix ? [inner_suffix] : []
+        ...innerSuffix ? [innerSuffix] : []
       ];
       const result = rule.transform(wrappedInner);
       return [
-        ...outer_prefix ? [outer_prefix] : [],
+        ...outerPrefix ? [outerPrefix] : [],
         result,
-        ...outer_suffix ? [outer_suffix] : []
+        ...outerSuffix ? [outerSuffix] : []
       ];
     } else if (this.rule instanceof TextStylerRegexRule) {
       return [this.rule.transform(this.match)];
     }
     throw new Error("TextStylerRegexRule provided without a valid `match`");
   }
-  _should_print_raw() {
+  _shouldPrintRaw() {
     if (this.rule instanceof TextStylerRegexRule) {
       return false;
     }
     const rule = this.rule;
-    const allow_inner = rule.allow_inner;
-    if (allow_inner === "ALLOW" /* ALLOW */ || this.parent === null) {
+    const allowInner = rule.allowInner;
+    if (allowInner === "ALLOW" /* ALLOW */ || this.parent === null) {
       return false;
     }
-    if (allow_inner === "DISALLOW_DIRECT" /* DISALLOW_DIRECT */) {
+    if (allowInner === "DISALLOW_DIRECT" /* DISALLOW_DIRECT */) {
       return this.parent.rule === rule;
     }
-    if (allow_inner === "DISALLOW_ANCESTOR" /* DISALLOW_ANCESTOR */) {
+    if (allowInner === "DISALLOW_ANCESTOR" /* DISALLOW_ANCESTOR */) {
       return this.path.includes(rule);
     }
     return false;
   }
 };
 export {
+  ConsumptionStyle,
+  InnerStyle,
   TextStyler,
   TextStylerRegexRule,
   TextStylerRule,
