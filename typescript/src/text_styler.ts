@@ -10,7 +10,7 @@ export enum InnerStyle {
   DISALLOW_ANCESTOR = "DISALLOW_ANCESTOR",
 }
 
-function htmlEscape(text: string): string {
+export function htmlEscape(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
@@ -36,10 +36,7 @@ export function htmlTag(
 }
 
 function withGlobalFlag(regex: RegExp): RegExp {
-  if (regex.flags.includes("g")) {
-    return regex;
-  }
-  return new RegExp(regex.source, regex.flags + "g");
+  return new RegExp(regex.source, regex.flags.replace(/[gy]/g, "") + "y");
 }
 
 export class TextStylerRegexRule<T> {
@@ -138,11 +135,8 @@ export class Path<T> {
     public readonly actions: Action<T>[] = [],
     public readonly stack: TextStylerRule<T>[] = [],
     public readonly numSkips: number = 0,
+    public readonly numPushes: number = 0,
   ) {}
-
-  get numPushes(): number {
-    return this.actions.filter((a) => a.type === "PUSH" || a.type === "REGEX").length;
-  }
 
   peek(): TextStylerRule<T> | null {
     return this.stack.length > 0 ? this.stack[this.stack.length - 1] : null;
@@ -154,37 +148,44 @@ export class Path<T> {
       newActions.push(action);
     }
 
+    let newNumPushes = this.numPushes;
     let newStack = this.stack;
     if (action.type === "PUSH") {
       newStack = [...this.stack, action.rule];
+      newNumPushes++;
     } else if (action.type === "POP") {
       newStack = this.stack.slice(0, -1);
+    } else if (action.type === "REGEX") {
+      newNumPushes++;
     }
 
-    return new Path(newActions, newStack, this.numSkips + extraSkip);
+    return new Path(newActions, newStack, this.numSkips + extraSkip, newNumPushes);
   }
 }
 
 export class TextStyler<T> {
   public rule: RuleType<T>[];
-  private minSkips: number | null = null;
+  private bestFound: [number, number] | null = null;
+  private stateBest: Map<string, [number, number]> = new Map();
 
   constructor(rule: RuleType<T>[]) {
     this.rule = rule;
+    this.rule.forEach((r, i) => (r as any)._id = i); // Fast cache IDs
   }
 
   public processText(text: string, multiline: boolean = false, escapeHtml: boolean = true): (T | string)[] {
-    this.minSkips = null;
+    this.bestFound = null;
+    this.stateBest.clear();
     const needsCleanup = !text.endsWith("\n");
     const normalizedText = needsCleanup ? text + "\n" : text;
 
     const result = this._processText(normalizedText, multiline, escapeHtml);
 
     if (needsCleanup && result.length > 0) {
-        const last = result[result.length - 1];
-        if (typeof last === "string") {
-            result[result.length - 1] = last.replace(/\n$/, "");
-        }
+      const last = result[result.length - 1];
+      if (typeof last === "string") {
+        result[result.length - 1] = last.replace(/\n$/, "");
+      }
     }
     return result;
   }
@@ -218,9 +219,10 @@ export class TextStyler<T> {
   }
 
   private _helper(text: string, start: number, path: Path<T>, multiline: boolean = false): Path<T>[] {
-    if (this.minSkips !== null && path.numSkips > this.minSkips) {
+    if (this._endEarly(path, start)) {
       return [];
     }
+
     if (text === "") {
       return [new Path<T>()];
     }
@@ -231,7 +233,14 @@ export class TextStyler<T> {
       if (path.stack.length > 0) {
         return [];
       }
-      this.minSkips = Math.min(this.minSkips ?? path.numSkips, path.numSkips);
+      const current_score: [number, number] = [path.numSkips, path.numPushes];
+      if (
+        this.bestFound === null ||
+        current_score[0] < this.bestFound[0] ||
+        (current_score[0] === this.bestFound[0] && current_score[1] < this.bestFound[1])
+      ) {
+        this.bestFound = current_score;
+      }
       return [path.copyAndPush({ type: "TEXT", text: text.slice(start) })];
     }
 
@@ -315,6 +324,39 @@ export class TextStyler<T> {
       }
     }
     return [];
+  }
+
+  private _endEarly(path: Path<T>, index: number): boolean {
+    // Skip this path if a better path has already completed:
+    if (this.bestFound !== null) {
+      if (
+        path.numSkips > this.bestFound[0] ||
+        (path.numSkips === this.bestFound[0] && path.numPushes >= this.bestFound[1])
+      ) {
+        return true;
+      }
+    }
+    // Skip this path if another path has already reached this index with a better state:
+    let stackKey = "";
+    for (let i = 0; i < path.stack.length; i++) {
+      stackKey += (path.stack[i] as any)._id + ",";
+    }
+    const stateKey = `${index}:${stackKey}`;
+    const currentScore: [number, number] = [path.numSkips, path.numPushes];
+    const previousBest = this.stateBest.get(stateKey);
+
+    if (previousBest) {
+      // If we've reached this exact index & stack before with a better or equal score, KILL THIS PATH.
+      if (
+        currentScore[0] > previousBest[0] ||
+        (currentScore[0] === previousBest[0] && currentScore[1] >= previousBest[1])
+      ) {
+        return true;
+      }
+    }
+
+    this.stateBest.set(stateKey, currentScore);
+    return false;
   }
 }
 
