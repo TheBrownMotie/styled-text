@@ -25,10 +25,14 @@ function htmlTag(tag, attributes, autoCloseEmpty = true) {
     return `<${start}>${inner}</${tag}>`;
   };
 }
+function withGlobalFlag(regex) {
+  return new RegExp(regex.source, regex.flags.replace(/[gy]/g, "") + "y");
+}
 var TextStylerRegexRule = class {
   constructor(regex, transform) {
     this.regex = regex;
     this.transform = transform;
+    this.regex = withGlobalFlag(regex);
   }
   regex;
   transform;
@@ -41,8 +45,6 @@ var TextStylerRule = class {
   consumeStart;
   consumeEnd;
   allowInner;
-  _startRegex = null;
-  _endRegex = null;
   constructor(start, transform, options) {
     this.start = start;
     this.transform = transform;
@@ -52,20 +54,19 @@ var TextStylerRule = class {
     this.consumeEnd = options?.consumeEnd ?? "REPLACE" /* REPLACE */;
     this.allowInner = options?.allowInner ?? "ALLOW" /* ALLOW */;
     if (this.start instanceof RegExp) {
-      this._startRegex = new RegExp(this.start.source, this.start.flags.includes("g") ? this.start.flags : this.start.flags + "g");
+      this.start = withGlobalFlag(this.start);
     }
     if (this.end instanceof RegExp) {
-      this._endRegex = new RegExp(this.end.source, this.end.flags.includes("g") ? this.end.flags : this.end.flags + "g");
+      this.end = withGlobalFlag(this.end);
     }
   }
   getStartMatch(text, pos) {
     if (typeof this.start === "string") {
       const startStr = this.getStart();
       return text.startsWith(startStr, pos) ? startStr : null;
-    }
-    if (this._startRegex) {
-      this._startRegex.lastIndex = pos;
-      const match = this._startRegex.exec(text);
+    } else {
+      this.start.lastIndex = pos;
+      const match = this.start.exec(text);
       return match && match.index === pos ? match[0] : null;
     }
     return null;
@@ -74,11 +75,9 @@ var TextStylerRule = class {
     const end = this.end !== null ? this.end : this.start;
     if (typeof end === "string") {
       return text.startsWith(end, pos) ? end : null;
-    }
-    const regex = this.end !== null ? this._endRegex : this._startRegex;
-    if (regex) {
-      regex.lastIndex = pos;
-      const match = regex.exec(text);
+    } else {
+      end.lastIndex = pos;
+      const match = end.exec(text);
       return match && match.index === pos ? match[0] : null;
     }
     return null;
@@ -92,17 +91,16 @@ var TextStylerRule = class {
   }
 };
 var Path = class _Path {
-  constructor(actions = [], stack = [], numSkips = 0) {
+  constructor(actions = [], stack = [], numSkips = 0, numPushes = 0) {
     this.actions = actions;
     this.stack = stack;
     this.numSkips = numSkips;
+    this.numPushes = numPushes;
   }
   actions;
   stack;
   numSkips;
-  get numPushes() {
-    return this.actions.filter((a) => a.type === "PUSH" || a.type === "REGEX").length;
-  }
+  numPushes;
   peek() {
     return this.stack.length > 0 ? this.stack[this.stack.length - 1] : null;
   }
@@ -111,23 +109,30 @@ var Path = class _Path {
     if (action.type !== "TEXT" || action.text !== "") {
       newActions.push(action);
     }
+    let newNumPushes = this.numPushes;
     let newStack = this.stack;
     if (action.type === "PUSH") {
       newStack = [...this.stack, action.rule];
+      newNumPushes++;
     } else if (action.type === "POP") {
       newStack = this.stack.slice(0, -1);
+    } else if (action.type === "REGEX") {
+      newNumPushes++;
     }
-    return new _Path(newActions, newStack, this.numSkips + extraSkip);
+    return new _Path(newActions, newStack, this.numSkips + extraSkip, newNumPushes);
   }
 };
 var TextStyler = class {
   rule;
-  minSkips = null;
+  bestFound = null;
+  stateBest = /* @__PURE__ */ new Map();
   constructor(rule) {
     this.rule = rule;
+    this.rule.forEach((r, i) => r._id = i);
   }
   processText(text, multiline = false, escapeHtml = true) {
-    this.minSkips = null;
+    this.bestFound = null;
+    this.stateBest.clear();
     const needsCleanup = !text.endsWith("\n");
     const normalizedText = needsCleanup ? text + "\n" : text;
     const result = this._processText(normalizedText, multiline, escapeHtml);
@@ -164,7 +169,7 @@ var TextStyler = class {
     return ast.render();
   }
   _helper(text, start, path, multiline = false) {
-    if (this.minSkips !== null && path.numSkips > this.minSkips) {
+    if (this._endEarly(path, start)) {
       return [];
     }
     if (text === "") {
@@ -175,7 +180,10 @@ var TextStyler = class {
       if (path.stack.length > 0) {
         return [];
       }
-      this.minSkips = Math.min(this.minSkips ?? path.numSkips, path.numSkips);
+      const current_score = [path.numSkips, path.numPushes];
+      if (this.bestFound === null || current_score[0] < this.bestFound[0] || current_score[0] === this.bestFound[0] && current_score[1] < this.bestFound[1]) {
+        this.bestFound = current_score;
+      }
       return [path.copyAndPush({ type: "TEXT", text: text.slice(start) })];
     }
     const paths = [];
@@ -220,8 +228,9 @@ var TextStyler = class {
     for (let index = start; index < text.length; index++) {
       for (const marking of this.rule) {
         if (marking instanceof TextStylerRegexRule) {
-          const match = text.slice(index).match(marking.regex);
-          if (match && match.index === 0) {
+          marking.regex.lastIndex = index;
+          const match = marking.regex.exec(text);
+          if (match && match.index === index) {
             nexts.push({ type: "REGEX", rule: marking, position: index, match });
           }
         } else if (!isEscaped) {
@@ -246,6 +255,27 @@ var TextStyler = class {
       }
     }
     return [];
+  }
+  _endEarly(path, index) {
+    if (this.bestFound !== null) {
+      if (path.numSkips > this.bestFound[0] || path.numSkips === this.bestFound[0] && path.numPushes >= this.bestFound[1]) {
+        return true;
+      }
+    }
+    let stackKey = "";
+    for (let i = 0; i < path.stack.length; i++) {
+      stackKey += path.stack[i]._id + ",";
+    }
+    const stateKey = `${index}:${stackKey}`;
+    const currentScore = [path.numSkips, path.numPushes];
+    const previousBest = this.stateBest.get(stateKey);
+    if (previousBest) {
+      if (currentScore[0] > previousBest[0] || currentScore[0] === previousBest[0] && currentScore[1] >= previousBest[1]) {
+        return true;
+      }
+    }
+    this.stateBest.set(stateKey, currentScore);
+    return false;
   }
 };
 function groupBy(children) {
@@ -394,11 +424,67 @@ var SyntaxTreeNode = class {
     return false;
   }
 };
+
+// src/markdown.ts
+var MARKDOWN_RULES = [
+  // Code Blocks & Inline Code (Disables all other formatting inside)
+  new TextStylerRegexRule(
+    /```([\s\S]+?)```/,
+    (match) => `<pre><code>${htmlEscape(match[1].trim())}</code></pre>`
+  ),
+  new TextStylerRegexRule(
+    /`([^`]+)`/,
+    (match) => `<code>${htmlEscape(match[1])}</code>`
+  ),
+  // Images & Links (Image must come first so the '!' isn't left behind)
+  new TextStylerRegexRule(
+    /!\[([^\]]*)\]\(([^)]+)\)/,
+    (match) => `<img src='${htmlEscape(match[2])}' alt='${htmlEscape(match[1])}' />`
+  ),
+  new TextStylerRegexRule(
+    /\[([^\]]+)\]\(([^)]+)\)/,
+    (match) => `<a href='${htmlEscape(match[2])}'>${htmlEscape(match[1])}</a>`
+  ),
+  // Headers
+  ...[6, 5, 4, 3, 2, 1].map(
+    (level) => new TextStylerRule(
+      new RegExp(`^#{${level}}\\s+`, "m"),
+      htmlTag(`h${level}`),
+      { end: /(?=\n|$)\n?/ }
+    )
+  ),
+  // Lists
+  new TextStylerRule(
+    /^\s*[-*]\s+/m,
+    htmlTag("li"),
+    { end: /(?=\n|$)\n?/, wrapConsecutive: htmlTag("ul") }
+  ),
+  new TextStylerRule(
+    /^\s*\d+\.\s+/m,
+    htmlTag("li"),
+    { end: /(?=\n|$)\n?/, wrapConsecutive: htmlTag("ol") }
+  ),
+  // Blockquotes
+  new TextStylerRule(
+    /^>\s+/m,
+    (children) => children.join("") + "\n",
+    // Preserve linebreaks inside quotes
+    { end: /(?=\n|$)\n?/, wrapConsecutive: htmlTag("blockquote") }
+  ),
+  // Inline Formatting
+  new TextStylerRule("**", htmlTag("strong")),
+  new TextStylerRule("__", htmlTag("strong")),
+  new TextStylerRule("*", htmlTag("em")),
+  new TextStylerRule("_", htmlTag("em")),
+  new TextStylerRule("~~", htmlTag("del"))
+];
 export {
   ConsumptionStyle,
   InnerStyle,
+  MARKDOWN_RULES,
   TextStyler,
   TextStylerRegexRule,
   TextStylerRule,
+  htmlEscape,
   htmlTag
 };

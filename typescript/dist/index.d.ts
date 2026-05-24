@@ -8,6 +8,7 @@ declare enum InnerStyle {
     DISALLOW_DIRECT = "DISALLOW_DIRECT",
     DISALLOW_ANCESTOR = "DISALLOW_ANCESTOR"
 }
+declare function htmlEscape(text: string): string;
 declare function htmlTag(tag: string, attributes?: Record<string, string>, autoCloseEmpty?: boolean): (children: (string | any)[]) => string;
 declare class TextStylerRegexRule<T> {
     regex: RegExp;
@@ -22,8 +23,6 @@ declare class TextStylerRule<T> {
     consumeStart: ConsumptionStyle;
     consumeEnd: ConsumptionStyle;
     allowInner: InnerStyle;
-    private _startRegex;
-    private _endRegex;
     constructor(start: string | RegExp, transform: (children: (T | string)[]) => T, options?: {
         end?: string | RegExp | null;
         wrapConsecutive?: (children: (T | string)[]) => T;
@@ -39,12 +38,16 @@ declare class TextStylerRule<T> {
 type RuleType<T> = TextStylerRule<T> | TextStylerRegexRule<T>;
 declare class TextStyler<T> {
     rule: RuleType<T>[];
-    private minSkips;
+    private bestFound;
+    private stateBest;
     constructor(rule: RuleType<T>[]);
     processText(text: string, multiline?: boolean, escapeHtml?: boolean): (T | string)[];
     private _processText;
     private _helper;
     private _findNext;
+    private _endEarly;
 }
 
-export { ConsumptionStyle, InnerStyle, type RuleType, TextStyler, TextStylerRegexRule, TextStylerRule, htmlTag };
+declare const MARKDOWN_RULES: (TextStylerRegexRule<string> | TextStylerRule<string>)[];
+
+export { ConsumptionStyle, InnerStyle, MARKDOWN_RULES, type RuleType, TextStyler, TextStylerRegexRule, TextStylerRule, htmlEscape, htmlTag };

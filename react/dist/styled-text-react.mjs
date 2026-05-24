@@ -12,13 +12,16 @@ function o(e, t, n = !0) {
 		return n && !i ? `<${r} />` : `<${r}>${i}</${e}>`;
 	};
 }
-var s = class {
+function s(e) {
+	return new RegExp(e.source, e.flags.replace(/[gy]/g, "") + "y");
+}
+var c = class {
 	constructor(e, t) {
-		this.regex = e, this.transform = t;
+		this.regex = e, this.transform = t, this.regex = s(e);
 	}
 	regex;
 	transform;
-}, c = class {
+}, l = class {
 	start;
 	transform;
 	end;
@@ -26,19 +29,16 @@ var s = class {
 	consumeStart;
 	consumeEnd;
 	allowInner;
-	_startRegex = null;
-	_endRegex = null;
 	constructor(e, t, n) {
-		this.start = e, this.transform = t, this.end = n?.end ?? null, this.wrapConsecutive = n?.wrapConsecutive ?? null, this.consumeStart = n?.consumeStart ?? "REPLACE", this.consumeEnd = n?.consumeEnd ?? "REPLACE", this.allowInner = n?.allowInner ?? "ALLOW", this.start instanceof RegExp && (this._startRegex = new RegExp(this.start.source, this.start.flags.includes("g") ? this.start.flags : this.start.flags + "g")), this.end instanceof RegExp && (this._endRegex = new RegExp(this.end.source, this.end.flags.includes("g") ? this.end.flags : this.end.flags + "g"));
+		this.start = e, this.transform = t, this.end = n?.end ?? null, this.wrapConsecutive = n?.wrapConsecutive ?? null, this.consumeStart = n?.consumeStart ?? "REPLACE", this.consumeEnd = n?.consumeEnd ?? "REPLACE", this.allowInner = n?.allowInner ?? "ALLOW", this.start instanceof RegExp && (this.start = s(this.start)), this.end instanceof RegExp && (this.end = s(this.end));
 	}
 	getStartMatch(e, t) {
 		if (typeof this.start == "string") {
 			let n = this.getStart();
 			return e.startsWith(n, t) ? n : null;
-		}
-		if (this._startRegex) {
-			this._startRegex.lastIndex = t;
-			let n = this._startRegex.exec(e);
+		} else {
+			this.start.lastIndex = t;
+			let n = this.start.exec(e);
 			return n && n.index === t ? n[0] : null;
 		}
 		return null;
@@ -46,11 +46,10 @@ var s = class {
 	getEndMatch(e, t) {
 		let n = this.end === null ? this.start : this.end;
 		if (typeof n == "string") return e.startsWith(n, t) ? n : null;
-		let r = this.end === null ? this._startRegex : this._endRegex;
-		if (r) {
-			r.lastIndex = t;
-			let n = r.exec(e);
-			return n && n.index === t ? n[0] : null;
+		{
+			n.lastIndex = t;
+			let r = n.exec(e);
+			return r && r.index === t ? r[0] : null;
 		}
 		return null;
 	}
@@ -61,33 +60,32 @@ var s = class {
 		let e = this.end === null ? this.start : this.end;
 		return typeof e == "string" ? e : "";
 	}
-}, l = class e {
-	constructor(e = [], t = [], n = 0) {
-		this.actions = e, this.stack = t, this.numSkips = n;
+}, u = class e {
+	constructor(e = [], t = [], n = 0, r = 0) {
+		this.actions = e, this.stack = t, this.numSkips = n, this.numPushes = r;
 	}
 	actions;
 	stack;
 	numSkips;
-	get numPushes() {
-		return this.actions.filter((e) => e.type === "PUSH" || e.type === "REGEX").length;
-	}
+	numPushes;
 	peek() {
 		return this.stack.length > 0 ? this.stack[this.stack.length - 1] : null;
 	}
 	copyAndPush(t, n = 0) {
 		let r = [...this.actions];
 		(t.type !== "TEXT" || t.text !== "") && r.push(t);
-		let i = this.stack;
-		return t.type === "PUSH" ? i = [...this.stack, t.rule] : t.type === "POP" && (i = this.stack.slice(0, -1)), new e(r, i, this.numSkips + n);
+		let i = this.numPushes, a = this.stack;
+		return t.type === "PUSH" ? (a = [...this.stack, t.rule], i++) : t.type === "POP" ? a = this.stack.slice(0, -1) : t.type === "REGEX" && i++, new e(r, a, this.numSkips + n, i);
 	}
-}, u = class {
+}, d = class {
 	rule;
-	minSkips = null;
+	bestFound = null;
+	stateBest = /* @__PURE__ */ new Map();
 	constructor(e) {
-		this.rule = e;
+		this.rule = e, this.rule.forEach((e, t) => e._id = t);
 	}
 	processText(e, t = !1, n = !0) {
-		this.minSkips = null;
+		this.bestFound = null, this.stateBest.clear();
 		let r = !e.endsWith("\n"), i = r ? e + "\n" : e, a = this._processText(i, t, n);
 		if (r && a.length > 0) {
 			let e = a[a.length - 1];
@@ -97,18 +95,22 @@ var s = class {
 	}
 	_processText(e, t = !1, n = !0) {
 		if (e === "") return [];
-		let r = this._helper(e, 0, new l(), t).reduce((e, t) => t.numSkips < e.numSkips ? t : t.numSkips > e.numSkips ? e : t.numPushes < e.numPushes ? t : e), i = new f(n);
+		let r = this._helper(e, 0, new u(), t).reduce((e, t) => t.numSkips < e.numSkips ? t : t.numSkips > e.numSkips ? e : t.numPushes < e.numPushes ? t : e), i = new p(n);
 		for (let e of r.actions) e.type === "TEXT" ? i.pushString(e.text) : e.type === "PUSH" ? i.push(e.rule, e.matched) : e.type === "POP" ? i.pop(e.matched) : e.type === "REGEX" && i.pushRegex(e.rule, e.match);
 		return i.render();
 	}
 	_helper(e, t, n, r = !1) {
-		if (this.minSkips !== null && n.numSkips > this.minSkips) return [];
-		if (e === "") return [new l()];
+		if (this._endEarly(n, t)) return [];
+		if (e === "") return [new u()];
 		let i = this._findNext(e, t);
-		if (t >= e.length || i.length === 0) return n.stack.length > 0 ? [] : (this.minSkips = Math.min(this.minSkips ?? n.numSkips, n.numSkips), [n.copyAndPush({
-			type: "TEXT",
-			text: e.slice(t)
-		})]);
+		if (t >= e.length || i.length === 0) {
+			if (n.stack.length > 0) return [];
+			let r = [n.numSkips, n.numPushes];
+			return (this.bestFound === null || r[0] < this.bestFound[0] || r[0] === this.bestFound[0] && r[1] < this.bestFound[1]) && (this.bestFound = r), [n.copyAndPush({
+				type: "TEXT",
+				text: e.slice(t)
+			})];
+		}
 		let a = [];
 		for (let o of i) {
 			let i = o.position, s = e.slice(t, i);
@@ -140,18 +142,19 @@ var s = class {
 		if (!r && n.stack.length > 0 && s.includes("\n")) return a;
 		let c = 1;
 		i.every((e) => e.type === "REGEX" ? e.match[0].length === 0 : e.matched.length === 0) && (c = 0);
-		let u = n.copyAndPush({
+		let l = n.copyAndPush({
 			type: "TEXT",
 			text: s
 		}, c);
-		return a.push(...this._helper(e, o, u, r)), a;
+		return a.push(...this._helper(e, o, l, r)), a;
 	}
 	_findNext(e, t) {
 		let n = [], r = !1;
 		for (let i = t; i < e.length; i++) {
-			for (let t of this.rule) if (t instanceof s) {
-				let r = e.slice(i).match(t.regex);
-				r && r.index === 0 && n.push({
+			for (let t of this.rule) if (t instanceof c) {
+				t.regex.lastIndex = i;
+				let r = t.regex.exec(e);
+				r && r.index === i && n.push({
 					type: "REGEX",
 					rule: t,
 					position: i,
@@ -175,11 +178,18 @@ var s = class {
 		}
 		return [];
 	}
+	_endEarly(e, t) {
+		if (this.bestFound !== null && (e.numSkips > this.bestFound[0] || e.numSkips === this.bestFound[0] && e.numPushes >= this.bestFound[1])) return !0;
+		let n = "";
+		for (let t = 0; t < e.stack.length; t++) n += e.stack[t]._id + ",";
+		let r = `${t}:${n}`, i = [e.numSkips, e.numPushes], a = this.stateBest.get(r);
+		return a && (i[0] > a[0] || i[0] === a[0] && i[1] >= a[1]) ? !0 : (this.stateBest.set(r, i), !1);
+	}
 };
-function d(e) {
+function f(e) {
 	let t = [];
 	for (let n of e) {
-		let e = typeof n == "string" && n.trim() === "", r = n instanceof p && n.rule instanceof c ? n.rule : null;
+		let e = typeof n == "string" && n.trim() === "", r = n instanceof m && n.rule instanceof l ? n.rule : null;
 		if (t.length === 0) t.push({
 			rule: e ? null : r,
 			items: [n]
@@ -194,21 +204,21 @@ function d(e) {
 	}
 	return t;
 }
-var f = class {
+var p = class {
 	constructor(e = !0) {
 		this.escapeHtml = e;
-		let t = new c("", (e) => e);
-		this.root = new p(null, t, null, "", e), this.curr = this.root;
+		let t = new l("", (e) => e);
+		this.root = new m(null, t, null, "", e), this.curr = this.root;
 	}
 	escapeHtml;
 	root;
 	curr;
 	push(e, t) {
-		let n = new p(this.curr, e, null, t, this.escapeHtml);
+		let n = new m(this.curr, e, null, t, this.escapeHtml);
 		this._push(n), this.curr = n;
 	}
 	pushRegex(e, t) {
-		let n = new p(this.curr, e, t);
+		let n = new m(this.curr, e, t);
 		this._push(n);
 	}
 	pushString(e) {
@@ -224,9 +234,9 @@ var f = class {
 	render() {
 		return this.root.render();
 	}
-}, p = class {
+}, m = class {
 	constructor(e, t, n = null, r = "", i = !0) {
-		this.parent = e, this.rule = t, this.match = n, this.startMatch = r, this.escapeHtml = i, e !== null && e.rule instanceof c && (this.path = [...e.path, e.rule]);
+		this.parent = e, this.rule = t, this.match = n, this.startMatch = r, this.escapeHtml = i, e !== null && e.rule instanceof l && (this.path = [...e.path, e.rule]);
 	}
 	parent;
 	rule;
@@ -243,9 +253,9 @@ var f = class {
 		return this.escapeHtml ? a(e) : e;
 	}
 	render() {
-		if (this.rule instanceof c) {
+		if (this.rule instanceof l) {
 			let e = this.rule, t = [];
-			for (let e of d(this.children)) {
+			for (let e of f(this.children)) {
 				let n = e.items.flatMap((e) => typeof e == "string" ? [this.escape(e)] : e.render());
 				e.rule && e.rule.wrapConsecutive ? t.push(e.rule.wrapConsecutive(n)) : t.push(...n);
 			}
@@ -266,14 +276,48 @@ var f = class {
 				s,
 				...a ? [a] : []
 			];
-		} else if (this.rule instanceof s) return [this.rule.transform(this.match)];
+		} else if (this.rule instanceof c) return [this.rule.transform(this.match)];
 		throw Error("TextStylerRegexRule provided without a valid `match`");
 	}
 	_shouldPrintRaw() {
-		if (this.rule instanceof s) return !1;
+		if (this.rule instanceof c) return !1;
 		let e = this.rule, t = e.allowInner;
 		return t === "ALLOW" || this.parent === null ? !1 : t === "DISALLOW_DIRECT" ? this.parent.rule === e : t === "DISALLOW_ANCESTOR" ? this.path.includes(e) : !1;
 	}
-}, m = ({ text: r, config: i, multiline: a = !1 }) => /* @__PURE__ */ n(t, { children: e(() => new u(i), [i]).processText(r, a, !1) });
+};
+[
+	new c(/```([\s\S]+?)```/, (e) => `<pre><code>${a(e[1].trim())}</code></pre>`),
+	new c(/`([^`]+)`/, (e) => `<code>${a(e[1])}</code>`),
+	new c(/!\[([^\]]*)\]\(([^)]+)\)/, (e) => `<img src='${a(e[2])}' alt='${a(e[1])}' />`),
+	new c(/\[([^\]]+)\]\(([^)]+)\)/, (e) => `<a href='${a(e[2])}'>${a(e[1])}</a>`),
+	...[
+		6,
+		5,
+		4,
+		3,
+		2,
+		1
+	].map((e) => new l(RegExp(`^#{${e}}\\s+`, "m"), o(`h${e}`), { end: /(?=\n|$)\n?/ })),
+	new l(/^\s*[-*]\s+/m, o("li"), {
+		end: /(?=\n|$)\n?/,
+		wrapConsecutive: o("ul")
+	}),
+	new l(/^\s*\d+\.\s+/m, o("li"), {
+		end: /(?=\n|$)\n?/,
+		wrapConsecutive: o("ol")
+	}),
+	new l(/^>\s+/m, (e) => e.join("") + "\n", {
+		end: /(?=\n|$)\n?/,
+		wrapConsecutive: o("blockquote")
+	}),
+	new l("**", o("strong")),
+	new l("__", o("strong")),
+	new l("*", o("em")),
+	new l("_", o("em")),
+	new l("~~", o("del"))
+];
 //#endregion
-export { r as ConsumptionStyle, i as InnerStyle, m as StyledText, u as TextStyler, s as TextStylerRegexRule, c as TextStylerRule, o as htmlTag };
+//#region src/StyledText.tsx
+var h = ({ text: r, config: i, multiline: a = !1 }) => /* @__PURE__ */ n(t, { children: e(() => new d(i), [i]).processText(r, a, !1) });
+//#endregion
+export { r as ConsumptionStyle, i as InnerStyle, h as StyledText, d as TextStyler, c as TextStylerRegexRule, l as TextStylerRule, o as htmlTag };
