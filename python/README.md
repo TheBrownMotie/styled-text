@@ -7,11 +7,6 @@ This library is for anyone who wants to create styled text **_like_** markdown, 
 ## Installation
 
 `pip install styled-text`
-This is a fantastic opportunity to showcase what makes your library incredibly powerful. The most unique and valuable aspects of your engine are the **Markdown parser (out of the box)**, the **robust lookaround regex capabilities (context-aware)**, and the **advanced hierarchical nested matching** (which naive string-replacement regex completely fails at).
-
-Here is a highly realistic, professional `README.md` Usage section that highlights all of those features simultaneously.
-
----
 
 ## Usage
 
