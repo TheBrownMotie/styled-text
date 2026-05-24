@@ -8,6 +8,8 @@ import {
   htmlTag,
 } from "../src/text_styler"; // Adjust the import path if necessary
 
+import { MARKDOWN_RULES } from '../src/markdown';
+
 test("test_empty_string1", () => {
   const text_styler = new TextStyler<string>([]);
   expect(text_styler.processText("").join("")).toBe("");
@@ -764,4 +766,43 @@ test('test_regex_lookbehind', () => {
 
   const message = "Hello @brownmotie";
   expect(textStyler.processText(message).join('')).toBe("Hello @<user>brownmotie</user>");
+});
+
+test("markdown rules", () => {
+  const styler = new TextStyler(MARKDOWN_RULES);
+
+  const input = `# Markdown Test
+This is **bold** and *italic*!
+~~Strikethrough~~ as well.
+
+- Item 1
+- Item 2 with [Link](https://google.com)
+
+1. First
+2. Second
+
+> Quote 1
+> Quote 2
+
+Inline \`<code>\`
+\`\`\`
+<div/>
+\`\`\`
+![Cat](cat.jpg)`;
+
+  const expected = `<h1>Markdown Test</h1>This is <strong>bold</strong> and <em>italic</em>!
+<del>Strikethrough</del> as well.
+<ul><li>Item 1</li><li>Item 2 with <a href='https://google.com'>Link</a></li></ul><ol><li>First</li><li>Second</li>
+</ol><blockquote>Quote 1
+Quote 2
+
+</blockquote>Inline <code>&lt;code&gt;</code>
+<pre><code>&lt;div/&gt;</code></pre>
+<img src='cat.jpg' alt='Cat' />`;
+
+  // We pass `escapeHtml = true` so the pure-string HTML output safely escapes the inner code tags!
+  // We pass `multiline = true` so the parser evaluates the entire block at once.
+  const output = styler.processText(input, true, true).join("");
+
+  expect(output).toBe(expected);
 });
