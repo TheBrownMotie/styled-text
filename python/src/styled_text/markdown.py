@@ -1,7 +1,7 @@
 import html
 import re
 
-from text_styler import TextStylerRegexRule, TextStylerRule, html_tag
+from .text_styler import TextStylerRegexRule, TextStylerRule, html_tag
 
 
 def _escape(match: re.Match[str], group: int = 1) -> str:

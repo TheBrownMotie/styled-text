@@ -1,7 +1,7 @@
 import re
 
-from markdown import markdown_rules
-from text_styler import (
+from styled_text.markdown import markdown_rules
+from styled_text.text_styler import (
     ConsumptionStyle,
     InnerStyle,
     TextStyler,
