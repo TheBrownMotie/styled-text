@@ -35,15 +35,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: "3.12" }
-      - run: |
-          pip install build twine
-          python -m build python/
-          twine upload python/dist/* --verbose
-        env:
-          TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build and Publish Python
+        run: |
+          uv build
+          uv publish --token ${{ secrets.PYPI_API_TOKEN }}
+        working-directory: python
 
   publish-npm:
     needs: test
