@@ -128,6 +128,11 @@ The study found that **performance increased** dramatically [[smith2023]].
 latex_output = styler.process_text(academic_text, multiline=True, escape_html=False)
 
 print(latex_output)
+# Prints:
+# The study found that \textbf{performance increased} dramatically \cite{smith2023}.
+# \begin{quote}
+# "The caching layer was the bottleneck."
+# \end{quote}
 ```
 
 ### ANSI color codes for a CLI tool
