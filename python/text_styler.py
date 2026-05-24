@@ -166,15 +166,12 @@ class TextStyler:
     ) -> str:
         if text == "":
             return text
-        paths = self._helper(text, 0, Path(), multiline)
 
-        # Fallback to raw text if heavily pruned, though base-case guarantees at least 1 path normally
+        paths = self._helper(text, 0, Path(), multiline)
         if not paths:
             return html.escape(text, quote=False) if escape_html else text
 
         best_path = min(paths, key=lambda p: (p.num_skips, p.num_pushes))
-
-        # Build the tree
         ast = SyntaxTree(escape_html)
         for action in best_path.actions:
             if isinstance(action, TextAction):
@@ -196,15 +193,14 @@ class TextStyler:
         if text == "":
             return [Path()]
 
-        # Get the next token(s)
         nexts = self._find_next(text, start)
 
-        # Base case, if there aren't any more tokens, return success or fail
+        # base case, if there aren't any more tokens, return success or fail
         if start >= len(text) or len(nexts) == 0:
             if len(path.stack) > 0:
                 return []
 
-            # Update our global optimal score
+            # update our global optimal score
             current_score = (path.num_skips, path.num_pushes)
             if self.best_found is None or current_score < self.best_found:
                 self.best_found = current_score
@@ -237,7 +233,7 @@ class TextStyler:
                     continue
             paths.extend(self._helper(text, new_start, new_path, multiline))
 
-        # Fallback branch: skip the current set of tokens entirely
+        # fallback branch: skip the current set of tokens entirely
         new_start = nexts[-1].position + 1
         text_part = text[start:new_start]
         if not multiline and len(path.stack) > 0 and "\n" in text_part:
