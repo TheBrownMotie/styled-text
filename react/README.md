@@ -4,6 +4,8 @@ The Typescript version of the `styled-text` library. Designed for **custom marku
 
 This library is for anyone who wants to create styled text **_like_** markdown, but with total **flexibility** to create their own rules.
 
+This particular library is a ReactTS wrapper of the typescript version @brownmotie/styled-text.
+
 ## Installation
 
 `npm install @brownmotie/styled-text-react`

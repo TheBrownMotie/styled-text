@@ -10,32 +10,179 @@ This library is for anyone who wants to create styled text **_like_** markdown, 
 
 ## Usage
 
+`styled-text` isn't just a markdown parser; it is a full AST (Abstract Syntax Tree) generator. You can build complex, nested, context-aware transpilers that go far beyond standard Regex search-and-replace.
+
+It's not just for producing html/xml; since you define the transformations, it can output anything you want. Here are some simple examples for HTML, LaTeX, and ANSI.
+
+### HTML
+
+Let's build a custom Discord-style chat formatter:
+
 ```typescript
-import { TextStyler, TextStylerRule, TextStylerRegexRule, htmlTag} from "../src/text_styler";
+import {
+  TextStyler,
+  TextStylerRule,
+  TextStylerRegexRule,
+  htmlTag
+} from "styled-text"; // Adjust import to match your package name
 
-// Let's style this text:
-const text = "_Welcome_ to _<~my library~>*styled-text*_ version 0.0.1";
+// Let's create our custom syntax rules:
+const discordRules = [
+  // Basic matching (matches symmetrically, i.e. **bold**)
+  new TextStylerRule("**", htmlTag("strong")),
 
-// Create the rules (only need to do this once)
-const styleRules = [
-  new TextStylerRule("*", htmlTag("strong")),
-  new TextStylerRule("_", htmlTag("em")),
-  new TextStylerRule("<~", htmlTag("del"), {end: "~>"}),
+  new TextStylerRule("||", htmlTag("span", { class: "spoiler" }), {
+    end: "||"
+  }),
+
+  // Context-aware regex lookbehinds
+  // (Matches "@username", but ONLY if preceded by whitespace or start of line)
   new TextStylerRegexRule(
-    /(\d+\.\d+\.\d+)/,
-    (match: RegExpMatchArray) => `<span style='color: red'>${match[1]}</span>`,
+    /(?<=^| )@([a-zA-Z0-9_]+)/,
+    (match) => `<a href='/users/${match[1]}'>@${match[1]}</a>`
+  ),
+
+  // (Transforms custom internal links `[[page]]` without consuming the brackets)
+  // Two things being demonstrated here:
+  //  1. We leave the tags in the output instead of consuming them
+  //  2. The end tag is different from the start tag
+  new TextStylerRule(
+    "[[",
+    (children) => {
+      const text = children.join("");
+      return `<a href='/wiki/${text}'>${text}</a>`;
+    },
+    {
+      end: "]]",
+      consumeStart: "OUTSIDE", // Leaves [[ in the output
+      consumeEnd: "OUTSIDE",   // Leaves ]] in the output
+    }
   )
 ];
 
-// Create the styler:
-const styler = new TextStyler<string>(styleRules);
+// Process it:
+const styler = new TextStyler(discordRules);
+const message = "Hello @admin, here is the **||[[Secret Code]]||**!";
 
-// Process text
-const html = styler.processText(text).join("");
+// processText returns an array of strings/React nodes, so we join them
+const html = styler.processText(message).join("");
 
-// `html` looks like this now:
-// <em>Welcome</em> to <em><del>my library</del><strong>styled-text</strong></em> version <span style='color: red'>0.0.1</span>
+// Output:
+// Hello <a href='/users/admin'>@admin</a>, here is the <strong><span class='spoiler'>[[<a href='/wiki/Secret Code'>Secret Code</a>]]</span></strong>!
+
 ```
+
+### Out-of-the-Box Markdown
+
+`styled-text` also provides a pre-defined Markdown ruleset. It supports headers, bold, italics, lists, quotes, inline code, blocks, and images!
+
+Since it's just a list of rules, it's easy to modify, and a useful reference for how the library can be used.
+
+```typescript
+import { TextStyler } from "styled-text";
+import { markdownRules } from "styled-text/markdown";
+
+const styler = new TextStyler(markdownRules);
+
+const text = `
+# Welcome!
+This is **bold** and *italic*.
+
+- Item 1
+- Item 2
+`;
+
+styler.processText(text, multiline, escapeHtml)
+const html = styler.processText(text, true).join("");
+
+```
+
+### LaTeX
+
+`styled-text` is not just an HTML tool, it is a general tool to transpile from **anything** to **anything** else. Here's a short example for producing LaTeX:
+
+```typescript
+import { TextStyler, TextStylerRule, TextStylerRegexRule } from "styled-text";
+
+const latexRules = [
+  // Convert bold to \textbf{}
+  new TextStylerRule("**", (children) => `\\textbf{${children.join("")}}`),
+  
+  // Convert quotes to LaTeX blockquotes
+  new TextStylerRule(
+    /^>\s+/m,
+    (children) => `\\begin{quote}\n${children.join("")}\n\\end{quote}`,
+    { end: /(?=\n|$)\n?/ }
+  ),
+  
+  // Convert an internal [[reference]] to a LaTeX \cite{}
+  new TextStylerRegexRule(
+    /\[\[(.*?)\]\]/,
+    (match) => `\\cite{${match[1]}}`
+  )
+];
+
+const styler = new TextStyler(latexRules);
+
+const academicText = `
+The study found that **performance increased** dramatically [[smith2023]].
+> "The caching layer was the bottleneck."
+`;
+
+// Make sure to disable escapeHtml
+const latexOutput = styler.processText(academicText, true, false).join("");
+
+console.log(latexOutput);
+// Prints:
+// The study found that \textbf{performance increased} dramatically \cite{smith2023}.
+// \begin{quote}
+// "The caching layer was the bottleneck."
+// \end{quote}
+
+```
+
+### ANSI color codes for a CLI tool
+
+And here's an example to convert to ANSI color codes:
+
+```typescript
+import { TextStyler, TextStylerRule } from "styled-text";
+
+// Standard terminal ANSI escape codes (using hex \x1b for JS strict mode compatibility)
+const ANSI = {
+  RESET: "\x1b[0m",
+  BOLD: "\x1b[1m",
+  ITALIC: "\x1b[3m",
+  RED: "\x1b[91m",
+  CYAN: "\x1b[96m"
+};
+
+const terminalRules = [
+  // Map Markdown-style stars to ANSI Bold/Italic
+  new TextStylerRule("**", (children) => `${ANSI.BOLD}${children.join("")}${ANSI.RESET}`),
+  new TextStylerRule("*", (children) => `${ANSI.ITALIC}${children.join("")}${ANSI.RESET}`),
+  
+  // Map BBCode-style tags to ANSI Colors
+  new TextStylerRule("[red]", (children) => `${ANSI.RED}${children.join("")}${ANSI.RESET}`, { end: "[/red]" }),
+  new TextStylerRule("[cyan]", (children) => `${ANSI.CYAN}${children.join("")}${ANSI.RESET}`, { end: "[/cyan]" })
+];
+
+const styler = new TextStyler(terminalRules);
+
+const rawText = "CLI output can be **bold**, *italic*, or [red]colored[/red]! Nesting works for [cyan]**bold cyan**[/cyan] text too.";
+
+// Make sure to disable escapeHtml
+const cliOutput = styler.processText(rawText, false, false).join("");
+
+console.log(cliOutput);
+
+```
+
+### Why use `styled-text` instead of raw Regex?
+
+If you tried to parse the string above using standard `.replace()` or standard global regex, nested tags (`||...||`) frequently overlap and corrupt each other, lookbehinds fail when preceding characters are sliced, XSS vulnerabilities are a constant concern, and if you have multiple regexes, the order you apply them will drastically affect the output.
+
+`styled-text` safely evaluates the string hierarchically (converting it to an Abstract Syntax Tree first), uses memoization and dynamic programming for performance (O(N)), and safely escapes HTML characters before output.
 
 ## Examples
 
