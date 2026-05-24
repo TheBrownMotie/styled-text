@@ -1,5 +1,6 @@
 import re
 
+from markdown import markdown_rules
 from text_styler import (
     ConsumptionStyle,
     InnerStyle,
@@ -966,3 +967,40 @@ def test_regex_lookbehind():
 
     # Without the fix, the parser slices away the "@" and the lookbehind fails.
     assert text_styler.process_text(message) == "Hello @<user>brownmotie</user>"
+
+
+def test_markdown():
+    styler = TextStyler(markdown_rules)
+
+    input_text = """# Markdown Test
+This is **bold** and *italic*!
+~~Strikethrough~~ as well.
+
+- Item 1
+- Item 2 with [Link](https://google.com)
+
+1. First
+2. Second
+
+> Quote 1
+> Quote 2
+
+Inline `<code>`
+```
+<div/>
+```
+![Cat](cat.jpg)
+"""
+    expected = """<h1>Markdown Test</h1>This is <strong>bold</strong> and <em>italic</em>!
+<del>Strikethrough</del> as well.
+<ul><li>Item 1</li><li>Item 2 with <a href='https://google.com'>Link</a></li></ul><ol><li>First</li><li>Second</li></ol>
+<blockquote>Quote 1
+Quote 2
+</blockquote>
+Inline <code>&lt;code&gt;</code>
+<pre><code>&lt;div/&gt;</code></pre>
+<img src='cat.jpg' alt='Cat' />
+"""
+    output = styler.process_text(input_text, multiline=True, escape_html=True)
+
+    assert output == expected

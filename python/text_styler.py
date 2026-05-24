@@ -3,9 +3,8 @@ import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
-from glob import escape
 from itertools import groupby
-from re import Match, Pattern, sub
+from re import Match, Pattern
 from typing import NamedTuple, override
 
 
@@ -111,38 +110,50 @@ class Path:
     actions: tuple[Action, ...] = ()
     stack: tuple[TextStylerRule, ...] = ()
     num_skips: int = 0
-
-    @property
-    def num_pushes(self) -> int:
-        return sum(1 for a in self.actions if isinstance(a, (PushAction, RegexAction)))
+    num_pushes: int = 0
 
     def peek(self) -> TextStylerRule | None:
         return self.stack[-1] if len(self.stack) > 0 else None
 
-    def copy_and_push(self, action: Action, extra_skip: int = 0) -> Path:
+    def copy_and_push(self, action: Action, extra_skip: int = 0) -> "Path":
         new_actions = self.actions
+        extra_push = 0
+
         if not isinstance(action, TextAction) or action.text:
             new_actions += (action,)
 
         if isinstance(action, PushAction):
             new_stack = self.stack + (action.rule,)
+            extra_push = 1
         elif isinstance(action, PopAction):
             new_stack = self.stack[:-1]
+        elif isinstance(action, RegexAction):
+            new_stack = self.stack
+            extra_push = 1
         else:
             new_stack = self.stack
 
-        return Path(new_actions, new_stack, self.num_skips + extra_skip)
+        return Path(
+            new_actions,
+            new_stack,
+            self.num_skips + extra_skip,
+            self.num_pushes + extra_push,
+        )
 
 
 class TextStyler:
     def __init__(self, rules: list[TextStylerRule | TextStylerRegexRule]):
         self.rules: list[TextStylerRule | TextStylerRegexRule] = rules
-        self.min_skips: int | None = None
+        self.best_found: tuple[int, int] | None = None
+        self.state_best: dict[str, tuple[int, int]] = {}
 
     def process_text(
         self, text: str, multiline: bool = False, escape_html: bool = True
     ) -> str:
-        self.min_skips = None
+        # Reset caches per run
+        self.best_found = None
+        self.state_best.clear()
+
         needs_cleanup = not text.endswith("\n")
         normalized_text = text if not needs_cleanup else text + "\n"
         result = self._process_text(normalized_text, multiline, escape_html)
@@ -157,8 +168,10 @@ class TextStyler:
             return text
         paths = self._helper(text, 0, Path(), multiline)
 
-        # First we pick the paths with the lowest skipped markings (memoization already pruned out most of these)
-        # Then tie-break to the fewest blocks created
+        # Fallback to raw text if heavily pruned, though base-case guarantees at least 1 path normally
+        if not paths:
+            return html.escape(text, quote=False) if escape_html else text
+
         best_path = min(paths, key=lambda p: (p.num_skips, p.num_pushes))
 
         # Build the tree
@@ -178,7 +191,7 @@ class TextStyler:
     def _helper(
         self, text: str, start: int, path: Path, multiline: bool = False
     ) -> list[Path]:
-        if self.min_skips is not None and path.num_skips > self.min_skips:
+        if self._end_early(path, start):
             return []
         if text == "":
             return [Path()]
@@ -190,7 +203,12 @@ class TextStyler:
         if start >= len(text) or len(nexts) == 0:
             if len(path.stack) > 0:
                 return []
-            self.min_skips = min(self.min_skips or path.num_skips, path.num_skips)
+
+            # Update our global optimal score
+            current_score = (path.num_skips, path.num_pushes)
+            if self.best_found is None or current_score < self.best_found:
+                self.best_found = current_score
+
             return [path.copy_and_push(TextAction(text[start:]))]
 
         paths: list[Path] = []
@@ -202,6 +220,8 @@ class TextStyler:
             new_path = path.copy_and_push(TextAction(text_part))
 
             if isinstance(next, NextRegex):
+                if len(next.match.group(0)) == 0:
+                    continue  # skip 0-length regexes
                 new_start += len(next.match.group(0))
                 new_path = new_path.copy_and_push(RegexAction(next.rule, next.match))
             else:
@@ -211,7 +231,7 @@ class TextStyler:
                     new_path = new_path.copy_and_push(PopAction(matched))
                 elif is_start:
                     if len(matched) == 0:
-                        continue  # Prevent infinite loops from 0-length regexes
+                        continue  # prevent infinite loops from 0-length regexes
                     new_path = new_path.copy_and_push(PushAction(rule, matched))
                 else:  # is_end but the top of the stack doesn't match? new_start moves forward but stack stays the same
                     continue
@@ -223,7 +243,7 @@ class TextStyler:
         if not multiline and len(path.stack) > 0 and "\n" in text_part:
             return paths
 
-        new_path = path.copy_and_push(TextAction(text_part), 1)
+        new_path = path.copy_and_push(TextAction(text_part), extra_skip=1)
         paths.extend(self._helper(text, new_start, new_path, multiline))
         return paths
 
@@ -255,6 +275,21 @@ class TextStyler:
             if len(nexts) > 0:
                 return nexts
         return []
+
+    def _end_early(self, path: Path, index: int) -> bool:
+        if self.best_found is not None:
+            if (path.num_skips, path.num_pushes) >= self.best_found:
+                return True
+
+        stack_key = ",".join(str(id(r)) for r in path.stack)
+        state_key = f"{index}:{stack_key}"
+        current_score = (path.num_skips, path.num_pushes)
+
+        if state_key in self.state_best:
+            if current_score >= self.state_best[state_key]:
+                return True
+        self.state_best[state_key] = current_score
+        return False
 
 
 class SyntaxTree:
