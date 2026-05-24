@@ -24,7 +24,7 @@ class InnerStyle(StrEnum):
 @dataclass
 class TextStylerRegexRule:
     regex: Pattern[str]
-    replace: str
+    transform: Callable[[re.Match[str]], str] | str
 
 
 def html_tag(
@@ -366,7 +366,9 @@ class SyntaxTreeNode:
             inner = inner_prefix + inner + inner_suffix
             return outer_prefix + self.rule.transform(inner) + outer_suffix
         elif self.match is not None:
-            return self.match.expand(self.rule.replace)
+            if isinstance(self.rule.transform, str):
+                return self.match.expand(self.rule.transform)
+            return self.rule.transform(self.match)
         raise ValueError("TextStylerRegexRule provided without a valid `match`")
 
     def _should_print_raw(self) -> bool:

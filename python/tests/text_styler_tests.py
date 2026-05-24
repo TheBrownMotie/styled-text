@@ -555,7 +555,7 @@ def test_regex():
         [
             TextStylerRegexRule(
                 regex=re.compile(r">>(\d+)"),
-                replace=r"<link id='\1'>&gt;&gt;\1</link>",
+                transform=r"<link id='\1'>&gt;&gt;\1</link>",
             )
         ]
     )
@@ -574,7 +574,7 @@ def test_regex_wrapped_with_strong():
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
                 regex=re.compile(r">>(\d+)"),
-                replace=r"<link id='\1'>&gt;&gt;\1</link>",
+                transform=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -593,7 +593,7 @@ def test_regex_wrapped_with_strong_inside_it1():
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
                 regex=re.compile(r">>([*\d]+)"),
-                replace=r"<link id='\1'>&gt;&gt;\1</link>",
+                transform=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -612,7 +612,7 @@ def test_regex_wrapped_with_strong_inside_it2():
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
                 regex=re.compile(r">>([*\d]+)"),
-                replace=r"<link id='\1'>&gt;&gt;\1</link>",
+                transform=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -631,7 +631,7 @@ def test_regex_wrapped_with_strong_inside_it3():
             TextStylerRule(start="*", transform=html_tag("strong")),
             TextStylerRegexRule(
                 regex=re.compile(r">>([*\d]+)"),
-                replace=r"<link id='\1'>&gt;&gt;\1</link>",
+                transform=r"<link id='\1'>&gt;&gt;\1</link>",
             ),
         ]
     )
@@ -649,11 +649,11 @@ def test_regex_within_regex():
         [
             TextStylerRegexRule(  # imageboard style implied board link
                 regex=re.compile(r"/anime/"),
-                replace=r"<link to='/anime'>/anime/</link>",
+                transform=r"<link to='/anime'>/anime/</link>",
             ),
             TextStylerRegexRule(  # external link
                 regex=re.compile(r"https://\w+\.\w+.com(/\w+)+"),
-                replace=r"<a href='\g<0>'>\g<0></a>",
+                transform=r"<a href='\g<0>'>\g<0></a>",
             ),
         ]
     )
@@ -681,7 +681,7 @@ def test_big_message():
             ),
             TextStylerRegexRule(  # external link
                 regex=re.compile(r"https://\w+\.\w+.com(/\w+)*"),
-                replace=r"<a href='\g<0>'>\g<0></a>",
+                transform=r"<a href='\g<0>'>\g<0></a>",
             ),
         ]
     )
@@ -705,7 +705,7 @@ def test_big_message_some_escaped():
             ),
             TextStylerRegexRule(  # external link
                 regex=re.compile(r"https://\w+\.\w+.com(/\w+)*"),
-                replace=r"<a href='\g<0>'>\g<0></a>",
+                transform=r"<a href='\g<0>'>\g<0></a>",
             ),
         ]
     )
